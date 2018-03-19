@@ -4,15 +4,14 @@
 Music Player Daemon Frontend. Adds a head to headless MPD.
 """
 
-import sys, re, time
+import sys, re, time, os, cgi
 import argparse
 import logging
 import threading
 import musicpd
 import gi
 gi.require_version("Gtk", "3.0")
-from gi.repository import Gtk
-from gi.repository import Gdk, GdkPixbuf
+from gi.repository import Gtk, Gdk, GdkPixbuf, GObject
 
 
 
@@ -36,6 +35,75 @@ default_window_height = 720
 default_mpd_host = "localhost"
 default_mpd_port = 6600
 
+css_style = b"""
+* {
+    /*
+    background-color: #a0a0a0;
+    color: black;
+    */
+    border-style: solid;
+    border-top-color: black;
+    border-bottom-color: black;
+    border-left-color: black;
+    border-right-color: black;
+}
+
+window {
+    background-color: #555555;
+    color: white;
+    font: 14pt arial;
+}
+
+grid#playback-pane label {
+    padding: 0px 5px 10px 10px;
+}
+
+grid#playback-pane image{
+    background-color: #404040;
+}
+
+scrolledwindow {
+    padding: 5px 5px 5px 5px;
+}
+
+label#current-artist {
+    font: bold 32pt arial;
+}
+
+label#current-title {
+    font: 24pt arial;
+}
+
+label#current-album {
+    font: 20pt arial;
+}
+
+label#current-time, label#end-time {
+    font: bold 16pt arial;
+}
+
+button, button * {
+    background: black;
+    color: white;
+}
+button:active, button:active * {
+    color: black;
+    background: white;
+}
+
+button:focus, button:focus * {
+    color: black;
+    background: lightgray;
+}
+
+dialog, messagedialog {
+    background-color: #b0b0b0;
+    color: #000000;
+    font: 16pt arial;
+}
+
+"""
+
 
 
 def pp_time(secs):
@@ -54,18 +122,39 @@ def pp_time(secs):
 
 class MetadataLabel(Gtk.Label):
     """
-    Gtk.Label with 2 accessible variables: data and t for type.
+    Gtk.Label with 2 accessible variables: data and type.
     """
     def set_metadata(self, data):
+        """
+        Set the metadata for the label
+
+        Args:
+            data: can be anything
+        """
         self.data = data
 
     def set_metatype(self, t):
+        """
+        Set the metatype for the label
+
+        Args:
+            t: can be anything
+        """
         self.type = t
 
 
 
 class IndexedListBox(Gtk.ListBox):
+    """
+    Gtk.ListBox with an index variable. This allows ListBoxes to track their position in list of ListBoxes.
+    """
     def set_index(self, index):
+        """
+        Sets the index of the ListBox
+
+        Args:
+            index:  int, the ListBox's position in the parent's list
+        """
         self.index = index
 
 
@@ -73,7 +162,7 @@ class IndexedListBox(Gtk.ListBox):
 class ColumnBrowser(Gtk.Box):
     """
     Column browser for a tree data structure. Inherits from GtkBox.
-    Creates columns with a list of GtkScrolledWindow containing a GtkListBox.
+    Creates columns with a list of GtkScrolledWindows containing a GtkListBox.
     """
     def __init__(self, selected_callback, keypress_callback, cols=2, spacing=5, hexpand=True, vexpand=True):
         """
@@ -164,7 +253,17 @@ class MPCFront(Gtk.Window):
         db_cache['Albums'][album]                = ditto
     """
 
-    def __init__(self, host, port):
+    music_root_dir = "/Users/suresh/Music/nyquist"
+    run_idle = True            ## Allows the ilde thread to run
+    update_song_time = False   ## Allows song time to be updated
+
+    ## Dialogs
+    playlist_confirm_dialog = None
+    edit_playlist_dialog = None
+    song_info_dialog = None
+
+
+    def __init__(self, host, port, css_style=None):
         """
         MPCFront constructor. Connects to MPD. Create main window and contained components.
 
@@ -191,28 +290,19 @@ class MPCFront(Gtk.Window):
         self.mpd_stats = self.mpd.stats()
         log.debug("mpd stats: %s" % self.mpd_stats)
 
-        self.run_idle = True            ## Allows the ilde thread to run
-        self.update_song_time = False   ## Allows song time to be updated
-
-        self.db_cache = {}
-        self.db_cache['Album Artists'] = {}
-        self.db_cache['Artists'] = {}
-        self.db_cache['Albums'] = {}
-        self.db_cache['Files'] = {}
-        self.db_cache['Genre'] = {}
-        self.db_cache['Songs'] = {}
+        self.init_db_cache()
 
         ## topgrid is the toplevel layout container
         self.topgrid = Gtk.Grid()
         self.topgrid.set_hexpand(True)
         self.topgrid.set_vexpand(True)
-        self.topgrid.set_row_spacing(5)
-        self.topgrid.set_column_spacing(5)
+        #self.topgrid.set_row_spacing(10)
+        #self.topgrid.set_column_spacing(10)
         self.add(self.topgrid)
 
         ## Setup browser columns
-        self.browser_box = ColumnBrowser(self.broswer_row_selected, self.browser_key_pressed, 4)
-        self.browser_box.columns[0].set_can_focus(True)
+        self.browser_box = ColumnBrowser(self.broswer_row_selected, self.browser_key_pressed, 4, 0)
+        self.browser_box.set_name("browser")
         self.topgrid.attach(self.browser_box, 0, 0, 2, 1)
         rows = []
         for i in self.db_cache.keys():
@@ -221,27 +311,34 @@ class MPCFront(Gtk.Window):
 
         ## Setup playback grid
         self.playback_grid = Gtk.Grid()
-        #self.playback_grid.set_can_focus(True)
-        self.playback_grid.set_row_spacing(5)
-        self.playback_grid.set_column_spacing(5)
+        self.playback_grid.set_name("playback-pane")
+        #self.playback_grid.set_row_spacing(10)
+        #self.playback_grid.set_column_spacing(10)
         self.topgrid.attach(self.playback_grid, 0, 1, 1, 1)
         self.current_artist_label = Gtk.Label("Artist")
+        self.current_artist_label.set_name("current-artist")
         self.current_artist_label.set_halign(Gtk.Align.START)
         self.current_artist_label.set_line_wrap(True)
         self.current_artist_label.set_hexpand(True)
         self.current_title_label = Gtk.Label("Title")
+        self.current_title_label.set_name("current-title")
         self.current_title_label.set_halign(Gtk.Align.START)
         self.current_title_label.set_line_wrap(True)
         self.current_album_label = Gtk.Label("Album")
+        self.current_album_label.set_name("current-album")
         self.current_album_label.set_halign(Gtk.Align.START)
         self.current_album_label.set_line_wrap(True)
         self.stats1_label = Gtk.Label("stats1")
+        self.stats1_label.set_name("stats1")
         self.stats1_label.set_halign(Gtk.Align.START)
         self.stats2_label = Gtk.Label("stats2")
+        self.stats2_label.set_name("stats2")
         self.stats2_label.set_halign(Gtk.Align.START)
         self.current_time_label = Gtk.Label("00:00")
+        self.current_time_label.set_name("current-time")
         self.current_time_label.set_halign(Gtk.Align.START)
         self.end_time_label = Gtk.Label("00:00")
+        self.end_time_label.set_name("end-time")
         self.end_time_label.set_halign(Gtk.Align.END)
 
         self.playback_grid.attach(self.current_artist_label, 0, 0, 1, 1)
@@ -269,7 +366,7 @@ class MPCFront(Gtk.Window):
         self.playback_button_box.pack_start(self.cue_button, True, True, 5)
         self.playback_button_box.pack_start(self.next_button, True, True, 5)
 
-        self.song_progress = Gtk.Scrollbar()
+        self.song_progress = Gtk.LevelBar()
         self.playback_grid.attach(self.song_progress, 0, 6, 2, 1)
 
         self.current_albumart = Gtk.Image()
@@ -279,17 +376,11 @@ class MPCFront(Gtk.Window):
 
         ## Setup playlist
         self.playlist_list = Gtk.ListBox()
-        self.playlist_list.set_can_focus(True)
         self.playlist_list.set_hexpand(True)
         self.playlist_list.set_vexpand(True)
         self.playlist_scroll = Gtk.ScrolledWindow()
         self.playlist_scroll.add(self.playlist_list)
         self.topgrid.attach(self.playlist_scroll, 1, 1, 1, 1)
-
-        ## Dialogs
-        self.playlist_confirm_dialog = None
-        self.edit_playlist_dialog = None
-
 
         ## Set event handlers
         self.connect("delete-event", Gtk.main_quit)
@@ -302,7 +393,6 @@ class MPCFront(Gtk.Window):
         self.play_button.connect("clicked", self.play_clicked)
         self.cue_button.connect("clicked", self.cue_clicked)
         self.next_button.connect("clicked", self.next_clicked)
-        #self.playlist_list.connect("row-selected", self.playlist_row_selected)
         self.playlist_list.connect("key-press-event", self.playlist_key_pressed)
 
         self.update_playback()
@@ -310,9 +400,13 @@ class MPCFront(Gtk.Window):
         self.set_resizable(True)
         self.present()
         self.get_focus()
+        #self.set_size_request(self.monitor.get_geometry().width, self.monitor.get_geometry().height)
 
         self.spawn_idle_thread()
+        self.playback_timeout_id = GObject.timeout_add(1000, self.playback_timeout, None)
+        self.timeout_counter = 0
 
+        """
         self.current_artist_label.modify_bg(Gtk.StateFlags.NORMAL, Gdk.Color(red=65535, blue=65535, green=65535))
         self.current_title_label.modify_bg(Gtk.StateFlags.NORMAL, Gdk.Color(red=65535, blue=65535, green=65535))
         self.current_album_label.modify_bg(Gtk.StateFlags.NORMAL, Gdk.Color(red=65535, blue=65535, green=65535))
@@ -322,6 +416,13 @@ class MPCFront(Gtk.Window):
         self.end_time_label.modify_bg(Gtk.StateFlags.NORMAL, Gdk.Color(red=65535, blue=65535, green=65535))
         self.playback_button_box.modify_bg(Gtk.StateFlags.NORMAL, Gdk.Color(red=65535, blue=65535, green=65535))
         self.current_albumart.modify_bg(Gtk.StateFlags.NORMAL, Gdk.Color(red=65535, blue=65535, green=65535))
+        """
+        self.css = Gtk.CssProvider()
+        self.css.load_from_data(css_style)
+        self.style_context = self.get_style_context()
+        self.style_context.add_provider_for_screen(Gdk.Screen.get_default(), self.css, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+        
+
 
 
 
@@ -338,39 +439,44 @@ class MPCFront(Gtk.Window):
         mod2 = (event.state & Gdk.ModifierType.MOD2_MASK)
 
         try:
-            if mod2 and event.keyval == Gdk.KEY_q:
+            if mod2 and event.keyval in (Gdk.KEY_q, Gdk.KEY_Q):
                 Gtk.main_quit()
-            elif event.keyval == Gdk.KEY_p:
-                log.debug("PLAY")
-                self.mpd.play()
-            elif event.keyval == Gdk.KEY_o:
-                log.debug("PAUSE")
-                self.mpd.pause()
-            elif event.keyval == Gdk.KEY_i:
+            elif event.keyval == ord(']'):
+                log.debug("PLAY/PAUSE")
+                self.play_or_pause()
+            elif event.keyval == ord('['):
                 log.debug("STOP")
                 self.mpd.stop()
-            elif event.keyval == Gdk.KEY_comma:
+            elif event.keyval == ord('.'):
                 log.debug("PREVIOUS")
                 self.mpd.previous()
-            elif event.keyval == Gdk.KEY_period:
+            elif event.keyval == ord('/'):
                 log.debug("NEXT")
                 self.mpd.next()
-            elif event.keyval == Gdk.KEY_l:
+            elif event.keyval == ord(';'):
                 log.debug("REWIND")
                 self.mpd.seekcur("-5")
-            elif event.keyval == Gdk.KEY_semicolon:
+            elif event.keyval == ord("'"):
                 log.debug("CUE")
                 self.mpd.seekcur("+5")
 
-            elif event.keyval == Gdk.KEY_1:
-                log.debug("focus on browser")
-                self.browser_box.columns[0].grab_focus()
-            elif event.keyval == Gdk.KEY_2:
-                log.debug("focus on playback")
-                self.playback_grid.grab_focus()
-            elif event.keyval == Gdk.KEY_3:
-                log.debug("focus on playlist")
-                self.playlist_list.get_children()[0].get_child().grab_focus()
+            elif event.keyval == ord('1'):
+                ## Focus on the last selected row in the browser
+                selected_items = self.browser_box.get_selected_rows()
+                if not len(selected_items):
+                    self.browser_box.columns[0].select_row(self.browser_box.columns[0].get_children()[0])
+                    selected_items = self.browser_box.get_selected_rows()
+                focus_col = self.browser_box.columns[len(selected_items)-1]
+                focus_row = focus_col.get_selected_row()
+                focus_row.grab_focus()
+
+            elif event.keyval == ord('2'):
+                ## Focus on the selected row in the playlist
+                selected_row = self.playlist_list.get_selected_row()
+                if not selected_row:
+                    selected_row = self.playlist_list.get_children()[0]
+                    self.playlist_list.select_row(self.playlist_list.get_children()[0])
+                selected_row.grab_focus()
 
             #elif event.keyval == Gdk.KEY_Right:
             #    log.debug("RIGHT")
@@ -383,7 +489,7 @@ class MPCFront(Gtk.Window):
             #else:
             #    log.debug("key press: %s" % event.keyval)
 
-        except musicpd.ConnectionError as e:
+        except (musicpd.ConnectionError, BrokenPipeError) as e:
             log.info("previous mpd command failed: %s" % e)
             self.mpd_connect()
 
@@ -395,10 +501,17 @@ class MPCFront(Gtk.Window):
             log.debug("browser key: ENTER")
             self.add_to_playlist()
 
+        elif event.keyval == ord('\\'):
+            self.browser_info_popup()
+
+
     def playlist_key_pressed(self, widget, event):
         if event.keyval == Gdk.KEY_Return:
             log.debug("playlist key: ENTER")
             self.edit_playlist()
+
+        elif event.keyval == ord('\\'):
+            self.playlist_info_popup()
 
 ##  Click handlers
 
@@ -409,7 +522,7 @@ class MPCFront(Gtk.Window):
         log.debug("PREVIOUS")
         try:
             self.mpd.previous()
-        except musicpd.ConnectionError as e:
+        except (musicpd.ConnectionError, BrokenPipeError) as e:
             log.info("previous failed: %s" % e)
             self.mpd_connect()
             self.mpd.previous()
@@ -421,7 +534,7 @@ class MPCFront(Gtk.Window):
         log.debug("REWIND")
         try:
             self.mpd.seekcur("-5")
-        except musicpd.ConnectionError as e:
+        except (musicpd.ConnectionError, BrokenPipeError) as e:
             log.info("rewind failed: %s" % e)
             self.mpd_connect()
             self.mpd.seekcur("-5")
@@ -433,7 +546,7 @@ class MPCFront(Gtk.Window):
         log.debug("STOP")
         try:
             self.mpd.stop()
-        except musicpd.ConnectionError as e:
+        except (musicpd.ConnectionError, BrokenPipeError) as e:
             log.info("stop failed: %s" % e)
             self.mpd_connect()
             self.mpd.stop()
@@ -451,7 +564,7 @@ class MPCFront(Gtk.Window):
         log.debug("CUE")
         try:
             self.mpd.seekcur("+5")
-        except musicpd.ConnectionError as e:
+        except (musicpd.ConnectionError, BrokenPipeError) as e:
             log.info("cue failed: %s" % e)
             self.mpd_connect()
             self.mpd.seekcur("+5")
@@ -463,26 +576,20 @@ class MPCFront(Gtk.Window):
         log.debug("NEXT")
         try:
             self.mpd.next()
-        except musicpd.ConnectionError as e:
+        except (musicpd.ConnectionError, BrokenPipeError) as e:
             log.info("next failed: %s" % e)
             self.mpd_connect()
             self.mpd.next()
 
 ##  Selected handlers
 
-    def playlist_row_selected(self, listbox, row):
-        """
-        Handler for playlist row being selected
-        """
-        if not row:
-            return
-        value = row.get_child().get_text()
-        log.debug("playlist selected: %s" % value)
-
     def broswer_row_selected(self, listbox, row):
         """
         Handler for selection event in browser_box
         """
+        if not row:
+            return
+
         child = row.get_child()
         if child:
             metatype = child.type
@@ -512,8 +619,8 @@ class MPCFront(Gtk.Window):
                         rows.append({ 'type': 'album', 'value': a, 'data': None })
                     self.browser_box.set_column_data(listbox.index+1, rows)
 
-                elif value == "Genre":
-                    genres = self.mpd.list("genre")
+                elif value == "Genres":
+                    genres = self.get_genres()
                     rows = []
                     for g in genres:
                         rows.append({'type': 'genre', 'value': g, 'data': None})
@@ -521,7 +628,7 @@ class MPCFront(Gtk.Window):
 
                     """
                 elif value == "Files":
-                    genres = self.mpd.listfiles()
+                    files = self.mpd.listfiles()
                     rows = []
                     for f in files:
                         rows.append({'type': 'file', 'value': f, 'data': None})
@@ -546,6 +653,14 @@ class MPCFront(Gtk.Window):
                 for a in albums:
                     rows.append({ 'type': 'album', 'value': a, 'data': None })
                 self.browser_box.set_column_data(listbox.index+1, rows)
+
+            elif metatype == "genre":
+                albums = self.get_albums_by_genre(value)
+                log.debug("albums: %s" % albums)
+                rows = []
+                for a in albums:
+                    rows.append({ 'type': 'album', 'value': a, 'data': None })
+                self.browser_box.set_column_data(listbox.index+1, rows)
     
             elif metatype == "album":
                 selected_items = self.browser_box.get_selected_rows()
@@ -556,12 +671,15 @@ class MPCFront(Gtk.Window):
                 songs = None
                 if last_type == "albumartist":
                     songs = self.get_songs_by_album_by_albumartist(value, last_value)
-    
+
                 elif last_type == "artist":
                     songs = self.get_songs_by_album_by_artist(value, last_value)
-    
+
                 elif last_type == "category":
                     songs = self.get_songs_by_album(value)
+
+                elif last_type == "genre":
+                    songs = self.get_songs_by_album_by_genre(value, last_value)
 
                 rows = []
                 if songs:
@@ -593,6 +711,17 @@ class MPCFront(Gtk.Window):
 
 
 
+    def init_db_cache(self):
+        self.db_cache = {}
+        self.db_cache['Album Artists'] = {}
+        self.db_cache['Artists'] = {}
+        self.db_cache['Albums'] = {}
+        self.db_cache['Files'] = {}
+        self.db_cache['Genres'] = {}
+        #self.db_cache['Songs'] = {}
+
+
+
     def play_or_pause(self):
         """
         Check the player status, play if stopped, pause otherwise.
@@ -601,7 +730,7 @@ class MPCFront(Gtk.Window):
             log.debug("PLAY")
             try:
                 self.mpd.play()
-            except musicpd.ConnectionError as e:
+            except (musicpd.ConnectionError, BrokenPipeError) as e:
                 log.info("play failed: %s" % e)
                 self.mpd_connect()
                 self.mpd.play()
@@ -609,7 +738,7 @@ class MPCFront(Gtk.Window):
             log.debug("PAUSE")
             try:
                 self.mpd.pause()
-            except musicpd.ConnectionError as e:
+            except (musicpd.ConnectionError, BrokenPipeError) as e:
                 log.info("pause failed: %s" % e)
                 self.mpd_connect()
                 self.mpd.pause()
@@ -617,7 +746,12 @@ class MPCFront(Gtk.Window):
 
 
     def set_current_albumart(self):
-        pixbuf = GdkPixbuf.Pixbuf.new_from_file_at_scale("cover.jpg", 200, 200, True)
+        song_dir = os.path.dirname(self.mpd_currentsong['file'])
+        cover_path = self.music_root_dir+"/"+song_dir+"/cover.jpg"
+        log.debug("looking for cover file: %s" % cover_path)
+        if not os.path.isfile(cover_path):
+            cover_path = "cover.jpg"
+        pixbuf = GdkPixbuf.Pixbuf.new_from_file_at_scale(cover_path, 200, 200, True)
         self.current_albumart.set_from_pixbuf(pixbuf)
 
 
@@ -633,7 +767,7 @@ class MPCFront(Gtk.Window):
             self.mpd_currentsong = mpd.currentsong()
             log.debug("status: %s" % self.mpd_status)
             log.debug("currentsong: %s" % self.mpd_currentsong)
-        except musicpd.ConnectionError as e:
+        except (musicpd.ConnectionError, BrokenPipeError) as e:
             log.debug("Attempting reconnect: %s" % e)
             self.mpd_connect()
             self.mpd_status = mpd.status()
@@ -641,8 +775,8 @@ class MPCFront(Gtk.Window):
 
 
         if self.mpd_currentsong:
-            self.current_artist_label.set_markup("<big><b>%s</b></big>" % self.mpd_currentsong['artist'])
-            self.current_title_label.set_markup("<big>%s</big>" % self.mpd_currentsong['title'])
+            self.current_artist_label.set_text(self.mpd_currentsong['artist'])
+            self.current_title_label.set_text(self.mpd_currentsong['title'])
             self.current_album_label.set_text(self.mpd_currentsong['album'])
 
         if 'audio' in self.mpd_status.keys():
@@ -652,9 +786,9 @@ class MPCFront(Gtk.Window):
             self.stats2_label.set_text(self.mpd_status['bitrate'])
 
         if 'time' in self.mpd_status.keys():
-            #self.song_progress.setMaximum(int(mpd_current['time']))
-            #ui.songProgress.setValue(int(mpd_status['curr_t']))
             self.mpd_status['curr_t'], self.mpd_status['end_t'] = self.mpd_status['time'].split(r':', 1)
+            self.song_progress.set_max_value(int(self.mpd_currentsong['time']))
+            self.song_progress.set_value(int(self.mpd_status['curr_t']))
             self.current_time_label.set_text(pp_time(self.mpd_status['curr_t']))
             self.end_time_label.set_text(pp_time(self.mpd_status['end_t']))
 
@@ -674,10 +808,11 @@ class MPCFront(Gtk.Window):
         try:
             plist = mpd.playlistinfo()
             log.debug("playlist: %s" % plist)
-        except musicpd.ConnectionError as e:
+        except (musicpd.ConnectionError, BrokenPipeError) as e:
             log.error("could not fetch playlist: %s" % e)
             self.mpd_connect()
             return None
+        return plist
         playlist = []
         for song in plist:
             #log.debug("file_info: %s" % song)
@@ -725,7 +860,7 @@ class MPCFront(Gtk.Window):
         mpd = musicpd.MPDClient()
         try:
             mpd.connect(self.mpd_host, self.mpd_port)
-        except musicpd.ConnectionError as e:
+        except (musicpd.ConnectionError, BrokenPipeError) as e:
             log.critical("idle thread could not connect to MPD: %s" % e)
             return None
 
@@ -733,12 +868,12 @@ class MPCFront(Gtk.Window):
             try:
                 mpd.send_idle()
                 changes = mpd.fetch_idle()
-            except musicpd.ConnectionError as e:
+            except (musicpd.ConnectionError, BrokenPipeError) as e:
                 log.error("idle failed: %s" % e)
                 self.mpd_connect()
                 continue
             except Exception as e:
-                log.error(e)
+                log.error("idle failed: %s" % e)
             self.update_song_time = False
             log.debug("changes: %s" % changes)
             for c in changes:
@@ -746,10 +881,14 @@ class MPCFront(Gtk.Window):
                     self.update_playlist(mpd)
                 elif c == "player":
                     self.update_playback(mpd)
+                elif c == "database":
+                    self.init_db_cache()
                 else:
-                    log.info("Unhandled change: %s" % changed)
+                    log.info("Unhandled change: %s" % c)
             self.update_song_time = True
-
+            GObject.source_remove(self.playback_timeout_id)
+            self.playback_timeout_id = GObject.timeout_add(1000, self.playback_timeout, None)
+            
 
 
     def spawn_idle_thread(self):
@@ -784,7 +923,7 @@ class MPCFront(Gtk.Window):
             try:
                 recv = mpd.list("artist")
                 log.debug("artists: %s" % recv)
-            except musicpd.ConnectionError as e:
+            except (musicpd.ConnectionError, BrokenPipeError) as e:
                 log.fatal("get artists failed: %s" % e)
                 self.mpd_connect()
                 return None
@@ -816,7 +955,7 @@ class MPCFront(Gtk.Window):
             try:
                 recv = mpd.list("albumartist")
                 log.debug("albumartists: %s" % recv)
-            except musicpd.ConnectionError as e:
+            except (musicpd.ConnectionError, BrokenPipeError) as e:
                 log.fatal("get albumartists failed: %s" % e)
                 self.mpd_connect()
                 return None
@@ -848,7 +987,7 @@ class MPCFront(Gtk.Window):
             try:
                 recv = mpd.list("album")
                 log.debug("albums: %s" % recv)
-            except musicpd.ConnectionError as e:
+            except (musicpd.ConnectionError, BrokenPipeError) as e:
                 log.fatal("get albums failed: %s" % e)
                 self.mpd_connect()
                 return None
@@ -882,7 +1021,7 @@ class MPCFront(Gtk.Window):
             try:
                 recv = mpd.list("album", artist)
                 log.debug("albums: %s" % recv)
-            except musicpd.ConnectionError as e:
+            except (musicpd.ConnectionError, BrokenPipeError) as e:
                 log.fatal("get albums by artist failed: %s" % e)
                 self.mpd_connect()
                 return None
@@ -914,9 +1053,9 @@ class MPCFront(Gtk.Window):
 
         if not len(self.db_cache['Album Artists'][artist]):
             try:
-                recv = mpd.list("album", artist)
+                recv = mpd.list("album", "albumartist", artist)
                 log.debug("albums: %s" % recv)
-            except musicpd.ConnectionError as e:
+            except (musicpd.ConnectionError, BrokenPipeError) as e:
                 log.fatal("get albums by albumartist failed: %s" % e)
                 self.mpd_connect()
                 return None
@@ -950,7 +1089,7 @@ class MPCFront(Gtk.Window):
             try:
                 recv = self.mpd.find("artist", artist, "album", album)
                 log.debug("songs: %s" % recv)
-            except musicpd.ConnectionError as e:
+            except (musicpd.ConnectionError, BrokenPipeError) as e:
                 log.fatal("get songs by album by artist failed: %s" % e)
                 self.mpd_connect()
                 return None
@@ -962,6 +1101,40 @@ class MPCFront(Gtk.Window):
                 self.db_cache['Artists'][artist][album].append(i)
 
         return self.db_cache['Artists'][artist][album]
+
+
+
+    def get_songs_by_album_by_genre(self, album, genre, mpd=None):
+        """
+        Finds songs by album and artist.
+
+        Args:
+            album: name of the album
+            genre: name of the genre
+            mpd: Optional musicpd.MPDClient object. If not supplied, the object's mpd object will be used.
+
+        Returns:
+            list of dictionaries containing song data
+        """
+        if not mpd:
+            mpd = self.mpd
+
+        if not len(self.db_cache['Genres'][genre][album]):
+            try:
+                recv = self.mpd.find("genre", genre, "album", album)
+                log.debug("songs: %s" % recv)
+            except (musicpd.ConnectionError, BrokenPipeError) as e:
+                log.fatal("get songs by album by genre failed: %s" % e)
+                self.mpd_connect()
+                return None
+
+            for i in recv:
+                if i== "":
+                    continue
+                log.debug("Adding to cache genre / album / song: %s / %s / %s" % (genre, album, i))
+                self.db_cache['Genres'][genre][album].append(i)
+
+        return self.db_cache['Genres'][genre][album]
 
 
 
@@ -984,7 +1157,7 @@ class MPCFront(Gtk.Window):
             try:
                 recv = self.mpd.find("albumartist", artist, "album", album)
                 log.debug("songs: %s" % recv)
-            except musicpd.ConnectionError as e:
+            except (musicpd.ConnectionError, BrokenPipeError) as e:
                 log.fatal("get songs by album by albumartist failed: %s" % e)
                 self.mpd_connect()
                 return None
@@ -1018,7 +1191,7 @@ class MPCFront(Gtk.Window):
             try:
                 recv = self.mpd.find("album", album)
                 log.debug("songs: %s" % recv)
-            except musicpd.ConnectionError as e:
+            except (musicpd.ConnectionError, BrokenPipeError) as e:
                 log.fatal("get songs by album failed: %s" % e)
                 self.mpd_connect()
                 return None
@@ -1033,12 +1206,68 @@ class MPCFront(Gtk.Window):
 
 
 
+    def get_genres(self, mpd=None):
+        """
+        Gets the list of genres from mpd, enters artists into db_cache if needed
+
+        Args:
+            mpd: Optional musicpd.MPDClient object. If not supplied, the object's mpd object will be used.
+
+        Returns:
+            list of genres
+        """
+        if not mpd:
+            mpd = self.mpd
+
+        if not len(self.db_cache['Genres']):
+            try:
+                recv = mpd.list("genre")
+                log.debug("genres: %s" % recv)
+            except (musicpd.ConnectionError, BrokenPipeError) as e:
+                log.fatal("get genres failed: %s" % e)
+                self.mpd_connect()
+                return None
+
+            for i in recv:
+                if i == "":
+                    continue
+                log.debug("Adding to cache genres: %s" % i)
+                self.db_cache['Genres'][i] = {}
+
+        return self.db_cache['Genres'].keys()
+
+
+
+    def get_albums_by_genre(self, genre, mpd=None):
+        """
+        """
+        if not mpd:
+            mpd = self.mpd
+        if not len(self.db_cache['Genres'][genre]):
+            try:
+                recv = self.mpd.list("album", "genre", genre)
+                log.debug("albums: %s" % recv)
+            except (musicpd.ConnectionError, BrokenPipeError) as e:
+                log.fatal("get album by genre: %s" % e)
+                self.mpd_connect()
+            for i in recv:
+                if i == "":
+                    continue
+                log.debug("Adding to cache genres / album: %s / %s" % (genre, i))
+                self.db_cache['Genres'][genre][i] = []
+
+        return self.db_cache['Genres'][genre]
+
+
+
     def add_to_playlist(self):
         """
         Displays confirmation dialog, presenting options to add, replace or cancel.
         """
         selected_items = self.browser_box.get_selected_rows()
         #log.debug("selected items: %s" % selected_items)
+        if not selected_items[-1]['type'] in ("album", "song"):
+            return
         add_item_name = ""
         for i in range(1, len(selected_items)):
             if selected_items[i]['type'] == "song":
@@ -1046,9 +1275,11 @@ class MPCFront(Gtk.Window):
             else:
                 add_item_name += selected_items[i]['value']+" "
 
-        self.playlist_confirm_dialog = Gtk.Dialog("Update playlist?", self, Gtk.DialogFlags.MODAL, ("Add", 1, "Replace", 2, "Cancel", 3))
+        self.playlist_confirm_dialog = Gtk.Dialog("Update playlist?", self, Gtk.DialogFlags.MODAL, ("Add", 1, "Replace", 2, "Cancel", -4))
         self.playlist_confirm_dialog.get_content_area().add(Gtk.Label("Selected: "+add_item_name))
-        self.playlist_confirm_dialog.get_content_area().set_size_request(300, 200)
+        self.playlist_confirm_dialog.get_content_area().set_size_request(300, 100)
+        style_context = self.playlist_confirm_dialog.get_style_context()
+        style_context.add_provider(self.css, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
         self.playlist_confirm_dialog.show_all()
         response = self.playlist_confirm_dialog.run()
         self.playlist_confirm_dialog.destroy()
@@ -1070,9 +1301,11 @@ class MPCFront(Gtk.Window):
                         self.mpd.findadd("artist", selected_items[-2]['value'], "album", selected_items[-1]['value'])
                     elif selected_items[-2]['type'] == "albumartist":
                         self.mpd.findadd("albumartist", selected_items[-2]['value'], "album", selected_items[-1]['value'])
+                    elif selected_items[-2]['type'] == "genre":
+                        self.mpd.findadd("genre", selected_items[-2]['value'], "album", selected_items[-1]['value'])
 
 
-        except musicpd.ConnectionError as e:
+        except (musicpd.ConnectionError, BrokenPipeError) as e:
             log.error("adding to playlist: %s" % e)
             self.mpd_connect()
 
@@ -1086,9 +1319,11 @@ class MPCFront(Gtk.Window):
         song = self.playlist_list.get_selected_row().get_child().data
         log.debug("selected song: %s" % song)
 
-        self.edit_playlist_dialog = Gtk.Dialog("Edit playlist", self, Gtk.DialogFlags.MODAL, ("Up", 1, "Down", 2, "Delete", 3))
+        self.edit_playlist_dialog = Gtk.Dialog("Edit playlist", self, Gtk.DialogFlags.MODAL, ("Up", 1, "Down", 2, "Delete", 3, "Cancel", -4))
         self.edit_playlist_dialog.get_content_area().add(Gtk.Label("Edit: "+song['title']))
-        self.edit_playlist_dialog.get_content_area().set_size_request(300, 200)
+        self.edit_playlist_dialog.get_content_area().set_size_request(300, 100)
+        style_context = self.edit_playlist_dialog.get_style_context()
+        style_context.add_provider(self.css, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
         self.edit_playlist_dialog.show_all();
         response = self.edit_playlist_dialog.run()
         self.edit_playlist_dialog.destroy()
@@ -1106,11 +1341,75 @@ class MPCFront(Gtk.Window):
                 log.debug("Deleting song at %d" % index)
                 self.mpd.deleteid(song['id'])
 
-        except musicpd.ConnectionError as e:
+        except (musicpd.ConnectionError, BrokenPipeError) as e:
             log.error("editing playlist: %s" % e)
             self.mpd_connect()
         except Exception as e:
             log.error("editing playlist: %s" % e)
+
+
+
+    def playback_timeout(self, data):
+        """
+        Calls to update playback info, resets timeout.
+
+        """
+        timeout = 0
+        if self.mpd_status['state'] in ("stop", "pause"):
+            log.debug("not playing, sleeping")
+            timeout = 10000
+        elif self.mpd_status['state'] == "play":
+            self.timeout_counter += 1
+            if self.timeout_counter >= 5:
+                self.update_playback()
+                self.timeout_counter = 0
+            else:
+                self.mpd_status['curr_t'] = str(int(self.mpd_status['curr_t'])+1)
+                self.song_progress.set_value(int(self.mpd_status['curr_t']))
+                self.current_time_label.set_text(pp_time(self.mpd_status['curr_t']))
+            timeout = 1000
+        else:
+            log.info("unknown state: %s" % self.mpd_status['state'])
+        self.playback_timeout_id = GObject.timeout_add(timeout, self.playback_timeout, None)
+
+
+
+    def song_info_popup(self, song):
+        """
+        """
+        song_text = """<big><b>%s</b></big>
+Artist: <b>%s</b>
+Album: %s
+Time: %s
+Track: %s
+Date: %s
+        """ % (cgi.escape(song['title']), cgi.escape(song['artist']), cgi.escape(song['album']), pp_time(song['time']), song['track'], song['date'], )
+        self.song_info_dialog = Gtk.MessageDialog(self, Gtk.DialogFlags.MODAL, Gtk.MessageType.INFO, Gtk.ButtonsType.OK)
+        self.song_info_dialog.set_name("song-info")
+        self.song_info_dialog.set_markup(song_text)
+        self.song_info_dialog.get_content_area().set_size_request(300, 300)
+        style_context = self.song_info_dialog.get_style_context()
+        style_context.add_provider(self.css, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+        self.song_info_dialog.show_all()
+        self.song_info_dialog.run()
+        self.song_info_dialog.destroy()
+
+
+
+    def playlist_info_popup(self):
+        """
+        """
+        song = self.playlist_list.get_selected_row().get_child().data
+        self.song_info_popup(song)
+
+
+
+    def browser_info_popup(self):
+        """
+        """
+        song = self.browser_box.get_selected_rows()[-1]['data']
+        self.song_info_popup(song)
+
 
 
 
@@ -1123,7 +1422,7 @@ if __name__ == "__main__":
     arg_parser.add_argument("-p", "--port", default=default_mpd_port, type=int, action='store', help="Remote TCP port number.")
     args = arg_parser.parse_args()
 
-    window = MPCFront(args.host, args.port)
+    window = MPCFront(args.host, args.port, css_style)
     window.set_size_request(default_window_width, default_window_height)
     window.present()
     window.show()
