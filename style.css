@@ -1,0 +1,69 @@
+* {
+    /*
+    background-color: #a0a0a0;
+    color: black;
+    */
+    border-style: solid;
+    border-top-color: black;
+    border-bottom-color: black;
+    border-left-color: black;
+    border-right-color: black;
+}
+
+window {
+    background-color: #555555;
+    color: white;
+    font-size: 18pt;
+    font-family: Verdana;
+}
+
+grid#playback-pane label {
+    padding: 0px 0px 10px 10px;
+}
+
+grid#playback-pane image{
+    background-color: #404040;
+    padding: 0px 0px 0px 0px;
+}
+
+scrolledwindow {
+    padding: 5px 5px 5px 5px;
+}
+
+label#current-title {
+    font-size: 36pt;
+    font-weight: bold;
+}
+
+label#current-artist {
+    font-size: 28pt;
+    font-weight: bold;
+}
+
+label#current-album {
+    font-size: 24pt;
+}
+
+label#current-time, label#end-time {
+    font-size: 18pt;
+}
+
+button, button * {
+    background: black;
+    color: white;
+}
+button:active, button:active * {
+    color: black;
+    background: white;
+}
+
+button:focus, button:focus * {
+    color: black;
+    background: lightgray;
+}
+
+dialog, messagedialog {
+    background-color: #b0b0b0;
+    color: #000000;
+    font: 16pt arial;
+}
