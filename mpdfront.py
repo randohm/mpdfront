@@ -259,17 +259,7 @@ class MPCFront(Gtk.Window):
         self.style_context.add_provider_for_screen(Gdk.Screen.get_default(), self.css, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
 
 
-        ## topgrid is the toplevel layout container
-        #self.topgrid = Gtk.Grid()
-        #self.topgrid.set_hexpand(True)
-        #self.topgrid.set_vexpand(True)
-        #self.topgrid.set_row_spacing(10)
-        #self.topgrid.set_column_spacing(10)
-        #self.add(self.topgrid)
-
-        self.mainbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-        #self.add(self.mainbox)
-
+        ## mainpaned is the toplevel layout container
         self.mainpaned = Gtk.VPaned()
         #self.mainpaned.set_wide_handle(True)
         self.add(self.mainpaned)
@@ -277,8 +267,6 @@ class MPCFront(Gtk.Window):
         ## Setup browser columns
         self.browser_box = ColumnBrowser(self.broswer_row_selected, self.browser_key_pressed, 4, 0, True, True)
         self.browser_box.set_name("browser")
-        #self.topgrid.attach(self.browser_box, 0, 0, 2, 1)
-        #self.mainbox.pack_start(self.browser_box, True, True, 0)
         self.mainpaned.add1(self.browser_box)
         rows = []
         for i in self.db_cache.keys():
@@ -286,10 +274,6 @@ class MPCFront(Gtk.Window):
         self.browser_box.set_column_data(0, rows)
 
         ## Setup bottom half
-        self.bottombox = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
-        #self.mainbox.pack_start(self.bottombox, False, True, 0)
-        #self.mainpaned.add2(self.bottombox)
-
         self.bottompaned = Gtk.HPaned()
         self.mainpaned.add2(self.bottompaned)
 
@@ -298,27 +282,23 @@ class MPCFront(Gtk.Window):
         self.playback_grid.set_name("playback-pane")
         #self.playback_grid.set_row_spacing(10)
         #self.playback_grid.set_column_spacing(10)
-        #self.topgrid.attach(self.playback_grid, 0, 1, 1, 1)
-        #self.bottombox.pack_start(self.playback_grid, False, True, 0)
         self.bottompaned.add1(self.playback_grid)
         self.current_title_label = Gtk.Label("Title")
-        #self.current_title_label.set_ellipsize(Pango.EllipsizeMode.END)
         self.current_title_label.set_name("current-title")
+        self.current_title_label.set_ellipsize(Pango.EllipsizeMode.END)
         self.current_title_label.set_halign(Gtk.Align.START)
-        self.current_title_label.set_line_wrap(True)
-        #self.current_title_label.set_justify(Gtk.Justification.LEFT)
+        #self.current_title_label.set_line_wrap(True)
         self.current_title_label.set_hexpand(True)
         self.current_artist_label = Gtk.Label("Artist")
-        #self.current_artist_label.set_ellipsize(Pango.EllipsizeMode.END)
         self.current_artist_label.set_name("current-artist")
         self.current_artist_label.set_halign(Gtk.Align.START)
-        self.current_artist_label.set_line_wrap(True)
-        #self.current_artist_label.set_justify(Gtk.Justification.LEFT)
+        self.current_artist_label.set_ellipsize(Pango.EllipsizeMode.END)
+        #self.current_artist_label.set_line_wrap(True)
         self.current_album_label = Gtk.Label("Album")
         self.current_album_label.set_name("current-album")
         self.current_album_label.set_halign(Gtk.Align.START)
-        self.current_album_label.set_line_wrap(True)
-        #self.current_album_label.set_justify(Gtk.Justification.LEFT)
+        self.current_album_label.set_ellipsize(Pango.EllipsizeMode.END)
+        #self.current_album_label.set_line_wrap(True)
         self.stats1_label = Gtk.Label("stats1")
         self.stats1_label.set_name("stats1")
         self.stats1_label.set_halign(Gtk.Align.START)
@@ -362,19 +342,18 @@ class MPCFront(Gtk.Window):
 
         self.current_albumart_raw = Gtk.Image()
         self.current_albumart = Gtk.Image()
+        self.current_albumart.set_valign(Gtk.Align.START)
         self.current_albumart.set_vexpand(True)
         #self.current_albumart.set_hexpand(True)
         self.playback_grid.attach(self.current_albumart, 1, 0, 1, 5)
 
         ## Setup playlist
         self.playlist_list = Gtk.ListBox()
-        self.playlist_list.set_hexpand(True)
+        #self.playlist_list.set_hexpand(True)
         #self.playlist_list.set_vexpand(True)
         self.playlist_scroll = Gtk.ScrolledWindow()
         self.playlist_scroll.set_hexpand(True)
         self.playlist_scroll.add(self.playlist_list)
-        #self.topgrid.attach(self.playlist_scroll, 1, 1, 1, 1)
-        #self.bottombox.pack_start(self.playlist_scroll, True, True, 0)
         self.bottompaned.add2(self.playlist_scroll)
 
         ## Set event handlers
@@ -395,7 +374,7 @@ class MPCFront(Gtk.Window):
         self.update_playlist()
 
         self.spawn_idle_thread()
-        self.playback_timeout_id = GObject.timeout_add(1000, self.playback_timeout, None)
+        self.playback_timeout_id = GObject.timeout_add(1000, self.playback_timeout)
         self.timeout_counter = 0
 
         self.set_resizable(True)
@@ -477,21 +456,32 @@ class MPCFront(Gtk.Window):
                 selected_row.grab_focus()
 
             elif event.keyval == ord('3'):
-                ## Hide bottom panel/fullscreen browser
-                """
-                if self.browser_full:
-                    #self.mainbox.pack_start(self.bottombox, False, True, 0)
-                    self.mainpaned.set_position(int(self.last_height/2))
-                    self.browser_full = False
-                else:
-                    #self.mainbox.remove(self.bottombox)
-                    self.mainpaned.set_position(self.last_height)
-                    self.browser_full = True
-                """
-                if self.mainpaned.get_position() >= self.last_height-2:
+                ## Hide bottom pane/fullscreen browser
+                if self.mainpaned.get_position() == self.last_height-1:
                     self.mainpaned.set_position(int(self.last_height/2))
                 else:
                     self.mainpaned.set_position(self.last_height)
+
+            elif event.keyval == ord('4'):
+                ## Hide top pane
+                if self.mainpaned.get_position() == 0:
+                    self.mainpaned.set_position(int(self.last_height/2))
+                else:
+                    self.mainpaned.set_position(0)
+
+            elif event.keyval == ord('5'):
+                ## Hide playlist
+                if self.bottompaned.get_position() == self.last_width-1:
+                    self.bottompaned.set_position(int(self.last_width/2))
+                else:
+                    self.bottompaned.set_position(self.last_width)
+
+            elif event.keyval == ord('6'):
+                ## Hide top pane
+                if self.bottompaned.get_position() == 0:
+                    self.bottompaned.set_position(int(self.last_width/2))
+                else:
+                    self.bottompaned.set_position(0)
 
 
             #elif event.keyval == Gdk.KEY_Right:
@@ -802,7 +792,7 @@ class MPCFront(Gtk.Window):
         if not self.mpd_currentsong or not 'file' in self.mpd_currentsong.keys():
             return
 
-        cover_file = ".cover.jpg"
+        cover_file = "/tmp/mpdfront_cover"
         audiofile = self.music_root_dir+"/"+self.mpd_currentsong['file']
 
         if self.last_cover_file != audiofile:
@@ -1432,7 +1422,7 @@ class MPCFront(Gtk.Window):
 
 
 
-    def playback_timeout(self, data):
+    def playback_timeout(self):
         """
         Calls to update playback info, resets timeout.
 
@@ -1453,7 +1443,7 @@ class MPCFront(Gtk.Window):
             timeout = 1000
         else:
             log.info("unknown state: %s" % self.mpd_status['state'])
-        self.playback_timeout_id = GObject.timeout_add(timeout, self.playback_timeout, None)
+        self.playback_timeout_id = GObject.timeout_add(timeout, self.playback_timeout)
 
 
 

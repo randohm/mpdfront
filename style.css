@@ -17,17 +17,22 @@ window {
     font-family: Verdana;
 }
 
+box {
+    padding: 5px 5px 5px 5px;
+}
+
 grid#playback-pane label {
-    padding: 0px 0px 10px 10px;
+    /*background-color: #b0b0b0;*/
+    padding: 0px 8px 8px 8px;
 }
 
 grid#playback-pane image{
-    background-color: #404040;
-    padding: 0px 0px 0px 0px;
+    /*background-color: #404040;*/
+    padding: 5px 5px 5px 5px;
 }
 
 scrolledwindow {
-    padding: 5px 5px 5px 5px;
+    padding: 7px 7px 7px 7px;
 }
 
 label#current-title {
@@ -45,7 +50,7 @@ label#current-album {
 }
 
 label#current-time, label#end-time {
-    font-size: 18pt;
+    font-size: 14pt;
 }
 
 button, button * {

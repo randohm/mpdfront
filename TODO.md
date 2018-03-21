@@ -12,7 +12,6 @@
 - category: songs
 - browser sorting: ignore "the"
 - album covers not stored to temp file
-- label justification
 
 - output select
 - shuffle
