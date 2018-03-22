@@ -11,7 +11,8 @@
 }
 
 window {
-    background-color: #555555;
+    /*background-color: #555555;*/
+    background: linear-gradient(lightgray, #404040);
     color: white;
     font-size: 18pt;
     font-family: Verdana;
@@ -28,7 +29,7 @@ grid#playback-pane label {
 
 grid#playback-pane image{
     /*background-color: #404040;*/
-    padding: 5px 5px 5px 5px;
+    padding: 0px 0px 0px 0px;
 }
 
 scrolledwindow {
@@ -38,15 +39,19 @@ scrolledwindow {
 label#current-title {
     font-size: 36pt;
     font-weight: bold;
+    text-shadow: -2px -2px 2px black, 2px -2px 2px black, -2px 2px 2px black, 2px 2px 2px black;
+    /*text-shadow: 2px 2px 4px #000000;*/
 }
 
 label#current-artist {
     font-size: 28pt;
     font-weight: bold;
+    text-shadow: -2px -2px 2px black, 2px -2px 2px black, -2px 2px 2px black, 2px 2px 2px black;
 }
 
 label#current-album {
     font-size: 24pt;
+    text-shadow: -2px -2px 2px black, 2px -2px 2px black, -2px 2px 2px black, 2px 2px 2px black;
 }
 
 label#current-time, label#end-time {
@@ -72,3 +77,22 @@ dialog, messagedialog {
     color: #000000;
     font: 16pt arial;
 }
+
+#progressbar block.filled {
+    background-color: #707090;
+}
+#progressbar * {
+    background-color: #d5e5e5;
+}
+
+/*
+scrolledwindow * {
+    background-color: lightgray;
+}
+*/
+
+scrolledwindow *:selected, scrolledwindow *:selected * {
+    background-color: #505065;
+    color: #d5e5e5;
+}
+

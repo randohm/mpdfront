@@ -13,6 +13,7 @@ import mutagen
 from mutagen.id3 import ID3, APIC
 from mutagen.flac import FLAC
 from mutagen.dsf import DSF
+from mutagen.mp4 import MP4
 import gi
 gi.require_version("Gtk", "3.0")
 from gi.repository import Gtk, Gdk, GdkPixbuf, GObject, Pango
@@ -43,6 +44,7 @@ default_mpd_host = "localhost"
 default_mpd_port = 6600
 default_css_file = "style.css"
 default_root_dir = "/"
+default_card_id = 0
 
 
 
@@ -195,14 +197,15 @@ class MPCFront(Gtk.Window):
         db_cache['Albums'][album]                = ditto
     """
 
-    run_idle = True             ## Allows the ilde thread to run
-    update_song_time = False    ## Allows song time to be updated
+    run_idle = True             ## Allows the idle thread to run
+    update_song_time = True     ## Allows song time to be updated
     last_cover_file = ""        ## Tracks albumart for display
     resize_event_on = False     ## Flag for albumart to resize
     browser_full = False        ## Tracks if the browser is fullscreen
     browser_hidden = False      ## Tracks if the browser is hidden
     last_width = 0
     last_height = 0
+    proc_dir = "/proc/asound"
 
 
     ## Dialogs
@@ -211,7 +214,7 @@ class MPCFront(Gtk.Window):
     song_info_dialog = None
 
 
-    def __init__(self, host, port, rdir, css_file, width, height):
+    def __init__(self, host, port, rdir, css_file, width, height, card_id):
         """
         MPCFront constructor. Connects to MPD. Create main window and contained components.
 
@@ -226,7 +229,9 @@ class MPCFront(Gtk.Window):
         self.mpd_host = host
         self.mpd_port = port
         self.music_root_dir = rdir
+        self.card_id = card_id
 
+        """
         self.screen = Gdk.Screen.get_default()
         self.display = self.get_display()
         self.monitor = self.display.get_primary_monitor()
@@ -234,6 +239,7 @@ class MPCFront(Gtk.Window):
         #self.monitor = self.display.get_monitor_at_window(self.get_window())
         log.debug("screen width: %s" % self.monitor.get_geometry().width)
         log.debug("screen height: %s" % self.monitor.get_geometry().height)
+        """
 
         if not self.mpd_connect():
             Gtk.main_quit()
@@ -283,34 +289,41 @@ class MPCFront(Gtk.Window):
         #self.playback_grid.set_row_spacing(10)
         #self.playback_grid.set_column_spacing(10)
         self.bottompaned.add1(self.playback_grid)
-        self.current_title_label = Gtk.Label("Title")
+        self.current_title_label = Gtk.Label(" ")
         self.current_title_label.set_name("current-title")
         self.current_title_label.set_ellipsize(Pango.EllipsizeMode.END)
         self.current_title_label.set_halign(Gtk.Align.START)
+        self.current_title_label.set_valign(Gtk.Align.START)
         #self.current_title_label.set_line_wrap(True)
         self.current_title_label.set_hexpand(True)
-        self.current_artist_label = Gtk.Label("Artist")
+        self.current_artist_label = Gtk.Label(" ")
         self.current_artist_label.set_name("current-artist")
         self.current_artist_label.set_halign(Gtk.Align.START)
+        self.current_artist_label.set_valign(Gtk.Align.START)
         self.current_artist_label.set_ellipsize(Pango.EllipsizeMode.END)
         #self.current_artist_label.set_line_wrap(True)
-        self.current_album_label = Gtk.Label("Album")
+        self.current_album_label = Gtk.Label(" ")
         self.current_album_label.set_name("current-album")
         self.current_album_label.set_halign(Gtk.Align.START)
+        self.current_album_label.set_valign(Gtk.Align.START)
         self.current_album_label.set_ellipsize(Pango.EllipsizeMode.END)
         #self.current_album_label.set_line_wrap(True)
-        self.stats1_label = Gtk.Label("stats1")
+        self.stats1_label = Gtk.Label(" ")
         self.stats1_label.set_name("stats1")
         self.stats1_label.set_halign(Gtk.Align.START)
-        self.stats2_label = Gtk.Label("stats2")
+        self.stats1_label.set_valign(Gtk.Align.END)
+        self.stats2_label = Gtk.Label(" ")
         self.stats2_label.set_name("stats2")
         self.stats2_label.set_halign(Gtk.Align.START)
+        self.stats2_label.set_valign(Gtk.Align.END)
         self.current_time_label = Gtk.Label("00:00")
         self.current_time_label.set_name("current-time")
         self.current_time_label.set_halign(Gtk.Align.START)
+        self.current_time_label.set_valign(Gtk.Align.END)
         self.end_time_label = Gtk.Label("00:00")
         self.end_time_label.set_name("end-time")
         self.end_time_label.set_halign(Gtk.Align.END)
+        self.end_time_label.set_valign(Gtk.Align.END)
 
         self.playback_grid.attach(self.current_title_label,  0, 0, 1, 1)
         self.playback_grid.attach(self.current_artist_label, 0, 1, 1, 1)
@@ -321,6 +334,8 @@ class MPCFront(Gtk.Window):
         self.playback_grid.attach(self.end_time_label,       1, 5, 1, 1)
 
         self.song_progress = Gtk.LevelBar()
+        self.song_progress.set_size_request(-1, 20)
+        self.song_progress.set_name("progressbar")
         self.playback_grid.attach(self.song_progress,        0, 6, 2, 1)
 
         ## Setup playback button box
@@ -390,7 +405,7 @@ class MPCFront(Gtk.Window):
         """
         Handler for window resize event
         """
-        log.debug("Window resize event")
+        #log.debug("Window resize event")
         w = self.get_allocated_width()
         h = self.get_allocated_height()
         if self.last_width != w or self.last_height != h:
@@ -400,8 +415,6 @@ class MPCFront(Gtk.Window):
             self.resize_widgets()
             self.set_current_albumart()
             self.resize_event_on = False
-
-
 
 ##  Keyboard event handlers
     def key_pressed(self, widget, event):
@@ -459,6 +472,9 @@ class MPCFront(Gtk.Window):
                 ## Hide bottom pane/fullscreen browser
                 if self.mainpaned.get_position() == self.last_height-1:
                     self.mainpaned.set_position(int(self.last_height/2))
+                    self.resize_event_on = True
+                    self.set_current_albumart()
+                    self.resize_event_on = False
                 else:
                     self.mainpaned.set_position(self.last_height)
 
@@ -468,6 +484,9 @@ class MPCFront(Gtk.Window):
                     self.mainpaned.set_position(int(self.last_height/2))
                 else:
                     self.mainpaned.set_position(0)
+                self.resize_event_on = True
+                self.set_current_albumart()
+                self.resize_event_on = False
 
             elif event.keyval == ord('5'):
                 ## Hide playlist
@@ -475,11 +494,17 @@ class MPCFront(Gtk.Window):
                     self.bottompaned.set_position(int(self.last_width/2))
                 else:
                     self.bottompaned.set_position(self.last_width)
+                self.resize_event_on = True
+                self.set_current_albumart()
+                self.resize_event_on = False
 
             elif event.keyval == ord('6'):
                 ## Hide top pane
                 if self.bottompaned.get_position() == 0:
                     self.bottompaned.set_position(int(self.last_width/2))
+                    self.resize_event_on = True
+                    self.set_current_albumart()
+                    self.resize_event_on = False
                 else:
                     self.bottompaned.set_position(0)
 
@@ -632,14 +657,15 @@ class MPCFront(Gtk.Window):
                         rows.append({'type': 'genre', 'value': g, 'data': None})
                     self.browser_box.set_column_data(listbox.index+1, rows)
 
-                    """
                 elif value == "Files":
-                    files = self.mpd.listfiles()
+                    files = self.get_files_list()
+                    log.debug("files: %s" % files)
                     rows = []
                     for f in files:
-                        rows.append({'type': 'file', 'value': f, 'data': None})
+                        subf = self.get_files_list(f['data']['dir'])
+                        for f2 in subf:
+                            rows.append({ 'type': f2['type'], 'value': f['value']+"/"+f2['value'], 'data': f2['data'], })
                     self.browser_box.set_column_data(listbox.index+1, rows)
-                    """
 
                 else:
                     self.browser_box.set_column_data(listbox.index+1, [])
@@ -694,6 +720,15 @@ class MPCFront(Gtk.Window):
                         track = re.sub(r'/.*', '',  s['track'])
                         rows.append({ 'type': 'song', 'value': track+" "+ s['title'], 'data': s })
                 self.browser_box.set_column_data(listbox.index+1, rows)
+    
+            elif metatype == "directory":
+                files = self.get_files_list(child.data['dir'])
+                rows = []
+                for f in files:
+                    log.debug("directory: %s" % f)
+                    rows.append(f)
+                self.browser_box.set_column_data(listbox.index+1, rows)
+
 
 ##  END EVENT HANDLERS
 
@@ -757,12 +792,21 @@ class MPCFront(Gtk.Window):
 
     def get_albumart(self, audiofile):
         """
+        Extract album art from a file, or look for a cover in its directory
+
+        Args:
+            audiofile: string, path of the file containing the audio data
         """
         img_data = None
         try:
             if re.search(r'\.flac$', self.mpd_currentsong['file'], re.IGNORECASE):
                 a = FLAC(audiofile)
                 img_data = a.pictures[0].data
+            elif re.search(r'\.m4a$', self.mpd_currentsong['file'], re.IGNORECASE):
+                a = MP4(audiofile)
+                if 'covr' in a.tags:
+                    if len(a.tags['covr']):
+                        img_data = a.tags['covr'][0]
             else:
                 a = mutagen.File(audiofile)
                 for k in a.keys():
@@ -773,14 +817,23 @@ class MPCFront(Gtk.Window):
             log.error("could not open audio file: %s" % e)
 
         if not img_data:
-            song_dir = os.path.dirname(self.mpd_currentsong['file'])
-            cover_path = self.music_root_dir+"/"+song_dir+"/cover.jpg"
+            cover_path = ""
+            song_dir =  self.music_root_dir+"/"+os.path.dirname(self.mpd_currentsong['file'])
+            for f in os.listdir(song_dir):
+                log.debug("song dir file: '%s'" % f)
+                if re.match(r'cover\.(jpg|png|jpeg)', f, re.IGNORECASE):
+                    cover_path = song_dir+"/"+f
+                    break
             log.debug("looking for cover file: %s" % cover_path)
-            if not os.path.isfile(cover_path):
+            if not os.path.isfile(cover_path): ## Backup blank image. TODO: fix this
                 cover_path = "cover.jpg"
-            cf = open(cover_path, 'rb')
-            img_data = cf.read()
-            cf.close()
+            try:
+                cf = open(cover_path, 'rb')
+                img_data = cf.read()
+                cf.close()
+            except Exception as e:
+                log.error("error reading cover file: %s" % e)
+                return None
 
         return img_data
 
@@ -805,7 +858,18 @@ class MPCFront(Gtk.Window):
 
         if self.last_cover_file != audiofile or self.resize_event_on:
             window_height = self.get_allocated_height()
-            image_height = int(window_height*.4)
+            paned_position = self.mainpaned.get_position()
+            from_bottom = self.playback_button_box.get_allocated_height() + self.song_progress.get_allocated_height() + self.end_time_label.get_allocated_height()
+            if from_bottom < 50:
+                from_bottom = 100
+            log.debug("wh: %d, pp: %d, ftb: %d" % (window_height, paned_position, from_bottom))
+            image_height = window_height - from_bottom - paned_position
+
+            window_width = self.get_allocated_width()
+            paned_position = self.bottompaned.get_position()
+            image_width = int((window_width - (window_width - paned_position))/2)
+
+            image_height = min(image_width, image_height)
 
             ## Assume all albumart should be more or less square
             log.debug("Setting image to %d x %d, window height: %d" % (image_height, image_height, window_height))
@@ -848,23 +912,74 @@ class MPCFront(Gtk.Window):
 
 
         if self.mpd_currentsong:
-            self.current_artist_label.set_text(self.mpd_currentsong['artist'])
-            self.current_title_label.set_text(self.mpd_currentsong['title'])
-            self.current_album_label.set_text(self.mpd_currentsong['album'])
+            if 'artist' in self.mpd_currentsong and 'title' in self.mpd_currentsong and 'album' in self.mpd_currentsong:
+                self.current_title_label.set_text(self.mpd_currentsong['title'])
+                self.current_artist_label.set_text(self.mpd_currentsong['artist'])
+                self.current_artist_label.set_ellipsize(Pango.EllipsizeMode.END)
+                self.current_artist_label.set_line_wrap(False)
+                self.current_album_label.set_text(self.mpd_currentsong['album'])
+            else:
+                filename = os.path.basename(self.mpd_currentsong['file'])
+                self.current_title_label.set_text(" ")
+                self.current_artist_label.set_text(filename)
+                self.current_artist_label.set_ellipsize(Pango.EllipsizeMode.NONE)
+                self.current_artist_label.set_line_wrap(True)
+                self.current_album_label.set_text(" ")
+        else:
+            self.current_title_label.set_text(" ")
+            self.current_artist_label.set_text(" ")
+            self.current_album_label.set_text(" ")
 
+        freq = bits = bitrate = chs = ""
         if 'audio' in self.mpd_status.keys():
             freq, bits, chs = re.split(r':', self.mpd_status['audio'], 2)
-            self.stats1_label.set_text("%3.1f kHz %s bits" % (float(freq)/1000, bits))
-
         if 'bitrate' in self.mpd_status.keys():
-            self.stats2_label.set_text(self.mpd_status['bitrate']+" kbps")
+            bitrate = self.mpd_status['bitrate']
+
+        format_text = dac_text = ""
+        if freq and bits and chs and bitrate:
+            if bits == "dsd":
+                format_text = "%2.1f MHz DSD" % (float(bitrate)/1000)
+            elif bits == "f":
+                format_text = "%3.1f kHz float PCM" % (float(freq)/1000)
+            else:
+                format_text = "%3.1f kHz %s bit PCM" % (float(freq)/1000, bits)
+
+            dac_freq = dac_bits = ""
+            proc_file = self.proc_dir+"/card"+str(self.card_id)+"/pcm0p/sub0/hw_params"
+            if os.path.exists(proc_file):
+                try:
+                    fh = open(proc_file)
+                    lines = fh.readlines()
+                    fh.close()
+                except Exception as e:
+                    log.error("opening up proc file: %s" % e)
+                for line in lines:
+                    line = line.rstrip()
+                    #log.debug("procfile line: %s" % line)
+                    if re.match(r'rate:', line):
+                        (junk1, dac_freq, junk2) = re.split(r' ', line, 2)
+                    elif re.match(r'format:', line):
+                        (junk1, dac_bits) = re.split(r': ', line, 1)
+                dac_text = "%3.1f kHz %s" % (float(dac_freq)/1000, dac_bits)
+
+
+            #self.stats1_label.set_text(" ")
+            self.stats2_label.set_markup("Src: "+format_text+" @ "+bitrate+" kbps\nDAC: "+dac_text)
+        else:
+            #self.stats1_label.set_text(" ")
+            self.stats2_label.set_text(" ")
 
         if 'time' in self.mpd_status.keys():
             self.mpd_status['curr_t'], self.mpd_status['end_t'] = self.mpd_status['time'].split(r':', 1)
             self.song_progress.set_max_value(int(self.mpd_currentsong['time']))
             self.song_progress.set_value(int(self.mpd_status['curr_t']))
-            self.current_time_label.set_text(pp_time(self.mpd_status['curr_t']))
+            self.current_time_label.set_text(pp_time(self.mpd_status['curr_t'])+" "+self.mpd_status['state'])
             self.end_time_label.set_text(pp_time(self.mpd_status['end_t']))
+        elif self.mpd_status['state'] == "stop":
+            self.song_progress.set_value(0)
+            self.current_time_label.set_text("0:00 "+self.mpd_status['state'])
+
 
         self.set_current_albumart()
 
@@ -916,7 +1031,11 @@ class MPCFront(Gtk.Window):
 
         ## Add songs to the list
         for song in playlist:
-            label_text = re.sub(r'/.*', '', cgi.escape(song['track']))+" ("+cgi.escape(pp_time(song['time']))+") <b>"+cgi.escape(song['title'])+"</b>"
+            label_text = ""
+            if 'track' in song and 'time' in song and 'title' in song:
+                label_text = re.sub(r'/.*', '', cgi.escape(song['track']))+" ("+cgi.escape(pp_time(song['time']))+") <b>"+cgi.escape(song['title'])+"</b>"
+            else:
+                label_text = os.path.basename(song['file'])
             label = MetadataLabel()
             label.set_markup(label_text)
             label.set_metatype('song')
@@ -925,6 +1044,7 @@ class MPCFront(Gtk.Window):
             self.playlist_list.add(label)
 
         self.playlist_list.show_all()
+
 
 
     def idle_thread(self):
@@ -942,6 +1062,7 @@ class MPCFront(Gtk.Window):
             try:
                 mpd.send_idle()
                 changes = mpd.fetch_idle()
+                time.sleep(0.1)
             except (musicpd.ConnectionError, BrokenPipeError) as e:
                 log.error("idle failed: %s" % e)
                 self.mpd_connect()
@@ -1340,7 +1461,7 @@ class MPCFront(Gtk.Window):
         """
         selected_items = self.browser_box.get_selected_rows()
         #log.debug("selected items: %s" % selected_items)
-        if not selected_items[-1]['type'] in ("album", "song"):
+        if not selected_items[-1]['type'] in ("album", "song", "file"):
             return
         add_item_name = ""
         for i in range(1, len(selected_items)):
@@ -1365,7 +1486,7 @@ class MPCFront(Gtk.Window):
                 self.mpd.clear()
 
             if response in (1, 2):
-                if selected_items[-1]['type'] == "song":
+                if selected_items[-1]['type'] in ("song", "file"):
                     #log.debug("adding song: %s" % selected_items[-1]['data']['title'])
                     self.mpd.add(selected_items[-1]['data']['file'])
                 elif selected_items[-1]['type'] == "album":
@@ -1393,7 +1514,10 @@ class MPCFront(Gtk.Window):
         log.debug("selected song: %s" % song)
 
         self.edit_playlist_dialog = Gtk.Dialog("Edit playlist", self, Gtk.DialogFlags.MODAL, ("Up", 1, "Down", 2, "Delete", 3, "Cancel", -4))
-        self.edit_playlist_dialog.get_content_area().add(Gtk.Label("Edit: "+song['title']))
+        if 'title' in song:
+            self.edit_playlist_dialog.get_content_area().add(Gtk.Label("Edit: "+song['title']))
+        else:
+            self.edit_playlist_dialog.get_content_area().add(Gtk.Label("Edit: "+song['file']))
         self.edit_playlist_dialog.get_content_area().set_size_request(300, 100)
         style_context = self.edit_playlist_dialog.get_style_context()
         style_context.add_provider(self.css, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
@@ -1430,16 +1554,22 @@ class MPCFront(Gtk.Window):
         timeout = 0
         if self.mpd_status['state'] in ("stop", "pause"):
             log.debug("not playing, sleeping")
+            if self.mpd_status['state'] == "stop":
+                self.current_time_label.set_text("0:00 "+self.mpd_status['state'])
+                self.song_progress.set_value(0)
+            else:
+                self.current_time_label.set_text(pp_time(self.mpd_status['curr_t'])+" "+self.mpd_status['state'])
             timeout = 10000
         elif self.mpd_status['state'] == "play":
             self.timeout_counter += 1
             if self.timeout_counter >= 5:
-                self.update_playback()
+                if self.update_song_time:
+                    self.update_playback()
                 self.timeout_counter = 0
             else:
                 self.mpd_status['curr_t'] = str(int(self.mpd_status['curr_t'])+1)
                 self.song_progress.set_value(int(self.mpd_status['curr_t']))
-                self.current_time_label.set_text(pp_time(self.mpd_status['curr_t']))
+                self.current_time_label.set_text(pp_time(self.mpd_status['curr_t'])+" "+self.mpd_status['state'])
             timeout = 1000
         else:
             log.info("unknown state: %s" % self.mpd_status['state'])
@@ -1451,22 +1581,34 @@ class MPCFront(Gtk.Window):
         """
         Displays a message dialog with information about the song
         """
-        song_text = """
-<span weight="ultrabold" size="xx-large">%s</span>
-Artist: <span weight="bold" size="x-large">%s</span>
-Album: <span weight="bold" size="large">%s</span>
-Time: %s
-Track: %s
-Date: %s
-File: <small>%s</small>
-        """ % (cgi.escape(song['title']), cgi.escape(song['artist']), cgi.escape(song['album']), pp_time(song['time']), cgi.escape(song['track']), cgi.escape(song['date']), cgi.escape(song['file']))
+        song_text = ""
+        if 'title' in song:
+            song_text += "<span weight='ultrabold' size='xx-large'>%s</span>\n" % cgi.escape(song['title'])
+        if 'artist' in song:
+            song_text += "Artist: <span weight='bold' size='x-large'>%s</span>\n" % cgi.escape(song['artist'])
+        if 'album' in song:
+            song_text += "Album: <span weight='bold' size='large'>%s</span>\n" % cgi.escape(song['album'])
+        if 'time' in song:
+            song_text += "Time: %s\n" % cgi.escape(pp_time(song['time']))
+        if 'track' in song:
+            song_text += "Track: %s\n" % cgi.escape(song['track'])
+        if 'date' in song:
+            song_text += "Date: %s\n" % cgi.escape(song['date'])
+        if 'genre' in song:
+            song_text += "Genre: %s\n" % cgi.escape(song['genre'])
+
+        if song_text == "":
+            song_text = "File: %s" % cgi.escape(song['file'])
+        else:
+            song_text += "File: <small>%s</small>" % cgi.escape(song['file'])
+
         self.song_info_dialog = Gtk.MessageDialog(self, Gtk.DialogFlags.MODAL, Gtk.MessageType.INFO, Gtk.ButtonsType.OK)
         self.song_info_dialog.set_name("song-info")
         self.song_info_dialog.set_markup(song_text)
         self.song_info_dialog.get_content_area().set_size_request(300, 300)
         style_context = self.song_info_dialog.get_style_context()
         style_context.add_provider(self.css, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
-        self.song_info_dialog.show_all()
+        #self.song_info_dialog.show_all()
         self.song_info_dialog.run()
         self.song_info_dialog.destroy()
 
@@ -1488,6 +1630,31 @@ File: <small>%s</small>
 
 
 
+    def get_files_list(self, path=""):
+        """
+        """
+        try:
+            files = self.mpd.lsinfo(path)
+            rows = []
+            for f in files:
+                if 'directory' in f:
+                    dirname = os.path.basename(f['directory'])
+                    rows.append({'type': 'directory', 'value': dirname, 'data': {'name': dirname, 'dir': f['directory']}})
+                elif 'file' in f:
+                    finfo = self.mpd.lsinfo(f['file'])[0]
+                    if not finfo:
+                        finfo = { 'file': f['file']}
+                    log.debug("file info: %s %s" % (f['file'], finfo))
+                    filename = os.path.basename(f['file'])
+                    rows.append({'type': 'file', 'value': filename, 'data': finfo})
+            return rows
+
+        except (musicpd.ConnectionError, BrokenPipeError) as e:
+            log.error("listing files: %s" % e)
+            self.mpd_connect()
+
+
+
 
 
 
@@ -1500,9 +1667,10 @@ if __name__ == "__main__":
     arg_parser.add_argument("-d", "--dir", default=default_root_dir, action='store', help="Root music directory.")
     arg_parser.add_argument("-x", "--width", default=default_window_width, type=int, action='store', help="Width of window.")
     arg_parser.add_argument("-y", "--height", default=default_window_height, type=int, action='store', help="Height of the window.")
+    arg_parser.add_argument("-s", "--card", default=default_card_id, type=int, action='store', help="ID of the sound device.")
     args = arg_parser.parse_args()
 
-    window = MPCFront(args.host, args.port, args.dir, args.css, args.width, args.height)
+    window = MPCFront(args.host, args.port, args.dir, args.css, args.width, args.height, args.card)
     window.show_all()
     window.get_focus()
     Gtk.main()
