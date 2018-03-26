@@ -1,7 +1,6 @@
 # TODO
 
-- make thread safe(r)
-- set song counter based on time elapsed
+- turn off timeout on update
 - handle db updates in browser
 - config file for:
   - shortcut keys
@@ -14,6 +13,7 @@
 - info pop error on no data
 - song counter finish and start over (DSD only??)
 - fetch album covers from web
+- playback grid class
 
 - output select
 - shuffle
@@ -23,6 +23,8 @@
 ? precaching
 
 
++ make thread safe(r)
++ set song counter based on time elapsed
 + browser sorting: ignore "the"
 + album art
 + new box layout
