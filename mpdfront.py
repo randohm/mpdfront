@@ -35,7 +35,7 @@ symbol_stop = chr(9608)
 symbol_play= chr(9613)+chr(9654)
 symbol_pause = chr(9613)+chr(9613)
 symbol_cue = chr(9654)+chr(9654)
-symbol_next = chr(9654)+chr(9612)
+symbol_next = chr(9654)+" "+chr(9612)
 
 ## window and app defaults
 default_window_width = 1920
@@ -104,16 +104,52 @@ def pp_time(secs):
 class OutputsDialog(Gtk.Dialog):
     """
     """
-    def __init__(self, parent):
+    def __init__(self, parent, button_pressed_callback):
         """
         """
-        Gtk.Dialog.__init__(self, "Select Outputs", parent, Gtk.DialogFlags.MODAL, ("Close", -4))
-        self.get_content_area().set_size_request(200, 100)
+        Gtk.Dialog.__init__(self, "Select Outputs", parent, Gtk.DialogFlags.MODAL, ("Close", 0))
+        self.set_name("outputs-dialog")
+        self.get_content_area().set_size_request(300, 200)
         for o in parent.mpd_outputs:
             log.debug("output: %s" % o)
             button = Gtk.CheckButton.new_with_label(o['outputname'])
             button.set_active(int(o['outputenabled']))
             self.get_content_area().add(button)
+            button.connect("clicked", button_pressed_callback, o['outputid'])
+        self.show_all()
+
+
+
+class OptionsDialog(Gtk.Dialog):
+    """
+    """
+    def __init__(self, parent, button_pressed_callback):
+        """
+        """
+        Gtk.Dialog.__init__(self, "Set Options", parent, Gtk.DialogFlags.MODAL, ("Close", 0))
+        self.set_name("options-dialog")
+        self.get_content_area().set_size_request(300, 200)
+
+        self.consume_button = Gtk.CheckButton.new_with_label("Consume")
+        self.consume_button.set_active(int(parent.mpd_status['consume']))
+        self.consume_button.connect("clicked", button_pressed_callback, "consume")
+        self.get_content_area().add(self.consume_button)
+
+        self.shuffle_button = Gtk.CheckButton.new_with_label("Shuffle")
+        self.shuffle_button.set_active(int(parent.mpd_status['random']))
+        self.shuffle_button.connect("clicked", button_pressed_callback, "random")
+        self.get_content_area().add(self.shuffle_button)
+
+        self.repeat_button = Gtk.CheckButton.new_with_label("Repeat")
+        self.repeat_button.set_active(int(parent.mpd_status['repeat']))
+        self.repeat_button.connect("clicked", button_pressed_callback, "repeat")
+        self.get_content_area().add(self.repeat_button)
+
+        self.single_button = Gtk.CheckButton.new_with_label("Single")
+        self.single_button.set_active(int(parent.mpd_status['single']))
+        self.single_button.connect("clicked", button_pressed_callback, "single")
+        self.get_content_area().add(self.single_button)
+
         self.show_all()
 
 
@@ -280,6 +316,7 @@ class MPCFront(Gtk.Window):
     edit_playlist_dialog = None
     song_info_dialog = None
     outputs_dialog = None
+    options_dialog = None
 
 
     def __init__(self, host, port, rdir, css_file, width, height, card_id, device_id):
@@ -393,10 +430,10 @@ class MPCFront(Gtk.Window):
         self.current_time_label.set_name("current-time")
         self.current_time_label.set_halign(Gtk.Align.START)
         self.current_time_label.set_valign(Gtk.Align.END)
-        self.end_time_label = Gtk.Label("00:00")
-        self.end_time_label.set_name("end-time")
-        self.end_time_label.set_halign(Gtk.Align.END)
-        self.end_time_label.set_valign(Gtk.Align.END)
+        #self.end_time_label = Gtk.Label("00:00")
+        #self.end_time_label.set_name("end-time")
+        #self.end_time_label.set_halign(Gtk.Align.END)
+        #self.end_time_label.set_valign(Gtk.Align.END)
 
         self.playback_grid.attach(self.current_title_label,  0, 0, 1, 1)
         self.playback_grid.attach(self.current_artist_label, 0, 1, 1, 1)
@@ -404,7 +441,7 @@ class MPCFront(Gtk.Window):
         self.playback_grid.attach(self.stats1_label,         0, 3, 1, 1)
         self.playback_grid.attach(self.stats2_label,         0, 4, 1, 1)
         self.playback_grid.attach(self.current_time_label,   0, 5, 1, 1)
-        self.playback_grid.attach(self.end_time_label,       1, 5, 1, 1)
+        #self.playback_grid.attach(self.end_time_label,       1, 5, 1, 1)
 
         self.song_progress = Gtk.LevelBar()
         self.song_progress.set_size_request(-1, 20)
@@ -433,7 +470,7 @@ class MPCFront(Gtk.Window):
         self.current_albumart.set_valign(Gtk.Align.START)
         self.current_albumart.set_vexpand(True)
         #self.current_albumart.set_hexpand(True)
-        self.playback_grid.attach(self.current_albumart, 1, 0, 1, 5)
+        self.playback_grid.attach(self.current_albumart, 1, 0, 1, 6)
 
         ## Setup playlist
         self.playlist_list = Gtk.ListBox()
@@ -526,9 +563,14 @@ class MPCFront(Gtk.Window):
                 self.mpd.seekcur("+5")
 
             elif event.keyval == ord(','):
-                self.outputs_dialog = OutputsDialog(self)
-                response = self.output_dialog.run()
+                self.outputs_dialog = OutputsDialog(self, self.outputs_changed)
+                response = self.outputs_dialog.run()
                 self.outputs_dialog.destroy()
+
+            elif event.keyval == ord('-'):
+                self.options_dialog = OptionsDialog(self, self.options_changed)
+                response = self.options_dialog.run()
+                self.options_dialog.destroy()
 
             elif event.keyval == ord('1'):
                 ## Focus on the last selected row in the browser
@@ -819,7 +861,6 @@ class MPCFront(Gtk.Window):
                 self.browser_box.set_column_data(listbox.index+1, rows)
                 self.browser_box.columns[listbox.index+1].set_sort_func(listbox_cmp, None, False)
 
-
 ##  END EVENT HANDLERS
 
 
@@ -883,15 +924,17 @@ class MPCFront(Gtk.Window):
     def get_albumart(self, audiofile):
         """
         Extract album art from a file, or look for a cover in its directory
-
         Args:
             audiofile: string, path of the file containing the audio data
+        Returns:
+            raw image data
         """
         img_data = None
         try:
             if re.search(r'\.flac$', self.mpd_currentsong['file'], re.IGNORECASE):
                 a = FLAC(audiofile)
-                img_data = a.pictures[0].data
+                if len(a.pictures):
+                    img_data = a.pictures[0].data
             elif re.search(r'\.m4a$', self.mpd_currentsong['file'], re.IGNORECASE):
                 a = MP4(audiofile)
                 if 'covr' in a.tags:
@@ -910,7 +953,6 @@ class MPCFront(Gtk.Window):
             cover_path = ""
             song_dir =  self.music_root_dir+"/"+os.path.dirname(self.mpd_currentsong['file'])
             for f in os.listdir(song_dir):
-                #log.debug("song dir file: '%s'" % f)
                 if re.match(r'cover\.(jpg|png|jpeg)', f, re.IGNORECASE):
                     cover_path = song_dir+"/"+f
                     break
@@ -923,7 +965,6 @@ class MPCFront(Gtk.Window):
                 cf.close()
             except Exception as e:
                 log.error("error reading cover file: %s" % e)
-                return None
 
         return img_data
 
@@ -931,6 +972,7 @@ class MPCFront(Gtk.Window):
 
     def set_current_albumart(self):
         """
+        Load and display image of current song.
         """
         if not self.mpd_currentsong or not 'file' in self.mpd_currentsong.keys():
             return
@@ -941,6 +983,8 @@ class MPCFront(Gtk.Window):
         if self.last_cover_file != audiofile:
             log.debug("new cover file, overwriting")
             img_data = self.get_albumart(audiofile)
+            if not img_data:
+                return
             cf = open(cover_file, "wb")
             cf.write(img_data)
             cf.close()
@@ -949,10 +993,11 @@ class MPCFront(Gtk.Window):
         if self.last_cover_file != audiofile or self.resize_event_on:
             window_height = self.get_allocated_height()
             paned_position = self.mainpaned.get_position()
-            from_bottom = self.playback_button_box.get_allocated_height() + self.song_progress.get_allocated_height() + self.end_time_label.get_allocated_height()
-            if from_bottom < 50:
-                from_bottom = 100
+            #from_bottom = self.playback_button_box.get_allocated_height() + self.song_progress.get_allocated_height() + self.end_time_label.get_allocated_height()
+            from_bottom = self.playback_button_box.get_allocated_height() + self.song_progress.get_allocated_height()
             log.debug("wh: %d, pp: %d, ftb: %d" % (window_height, paned_position, from_bottom))
+            if from_bottom < 50:
+                from_bottom = 76
             image_height = window_height - from_bottom - paned_position
 
             window_width = self.get_allocated_width()
@@ -1071,7 +1116,7 @@ class MPCFront(Gtk.Window):
 
 
             #self.stats1_label.set_text(" ")
-            self.stats2_label.set_markup("src: "+format_text+" @ "+bitrate+" kbps\ndac: "+dac_text)
+            self.stats2_label.set_markup("<small><b>src:</b></small> "+format_text+" @ "+bitrate+" kbps\n<small><b>dac:</b></small> "+dac_text)
         else:
             #self.stats1_label.set_text(" ")
             self.stats2_label.set_text(" ")
@@ -1084,11 +1129,11 @@ class MPCFront(Gtk.Window):
             self.last_update_offset = int(self.mpd_status['curr_t'])
             self.song_progress.set_max_value(int(self.mpd_currentsong['time']))
             self.song_progress.set_value(self.last_update_offset)
-            self.current_time_label.set_text(pp_time(self.last_update_offset)+" "+print_state)
-            self.end_time_label.set_text(pp_time(self.mpd_status['end_t']))
+            self.current_time_label.set_text(pp_time(self.last_update_offset)+" / "+pp_time(self.mpd_status['end_t'])+" "+print_state)
+            #self.end_time_label.set_text(pp_time(self.mpd_status['end_t']))
         elif self.mpd_status['state'] == "stop":
             self.song_progress.set_value(0)
-            self.current_time_label.set_text("0:00 Stopped")
+            self.current_time_label.set_text("Stopped")
             self.last_update_offset = 0
 
 
@@ -1187,6 +1232,10 @@ class MPCFront(Gtk.Window):
                     self.do_update_playback = True
                 elif c == "database":
                     self.do_update_database = True
+                elif c == "outputs":
+                    None
+                elif c == "mixer":
+                    None
                 else:
                     log.info("Unhandled change: %s" % c)
             #GObject.source_remove(self.playback_timeout_id)
@@ -1621,7 +1670,7 @@ class MPCFront(Gtk.Window):
         song = self.playlist_list.get_selected_row().get_child().data
         #log.debug("selected song: %s" % song)
 
-        self.edit_playlist_dialog = Gtk.Dialog("Edit playlist", self, Gtk.DialogFlags.MODAL, ("Up", 1, "Down", 2, "Delete", 3, "Cancel", -4))
+        self.edit_playlist_dialog = Gtk.Dialog("Edit playlist", self, Gtk.DialogFlags.MODAL, ("Play", 4, "Up", 1, "Down", 2, "Delete", 3, "Cancel", -4))
         if 'title' in song:
             self.edit_playlist_dialog.get_content_area().add(Gtk.Label("Edit: "+song['title']))
         else:
@@ -1645,6 +1694,8 @@ class MPCFront(Gtk.Window):
             elif response == 3:
                 #log.debug("Deleting song at %d" % index)
                 self.mpd.deleteid(song['id'])
+            elif response == 4:
+                self.mpd.playid(song['id'])
 
         except (musicpd.ConnectionError, BrokenPipeError) as e:
             log.error("editing playlist: %s" % e)
@@ -1672,9 +1723,9 @@ class MPCFront(Gtk.Window):
             timeout = self.sleep_play
         else:
 
-            log.debug("status at timeout: %s" % self.mpd_status['state'])
+            #log.debug("status at timeout: %s" % self.mpd_status['state'])
             if self.mpd_status['state'] == "stop":
-                self.current_time_label.set_text("0:00 Stopped")
+                self.current_time_label.set_text("Stopped")
                 self.song_progress.set_value(0)
                 timeout = self.sleep_stop
             elif self.mpd_status['state'] == "pause":
@@ -1684,12 +1735,12 @@ class MPCFront(Gtk.Window):
                 right_now = time.time()
                 since_last_update = right_now - self.last_update_time
                 if since_last_update >= 5:
-                    log.debug("FULL refresh")
+                    #log.debug("FULL refresh")
                     self.update_playback()
                 else:
                     current_offset = self.last_update_offset+int(since_last_update)
                     self.song_progress.set_value(current_offset)
-                    self.current_time_label.set_text(pp_time(current_offset)+" Playing")
+                    self.current_time_label.set_text(pp_time(current_offset)+" / "+pp_time(self.mpd_status['end_t'])+" Playing")
                 timeout = self.sleep_play
             else:
                 log.info("unknown state: %s" % self.mpd_status['state'])
@@ -1773,6 +1824,42 @@ class MPCFront(Gtk.Window):
 
         except (musicpd.ConnectionError, BrokenPipeError) as e:
             log.error("listing files: %s" % e)
+            self.mpd_connect()
+
+
+
+    def outputs_changed(self, button, outputid):
+        """
+        """
+        #log.debug("outputid: %s, %s" % (outputid, button.get_active()))
+        try:
+            if button.get_active():
+                self.mpd.enableoutput(outputid)
+            else:
+                self.mpd.disableoutput(outputid)
+            self.mpd_outputs = self.mpd.outputs()
+        except (musicpd.ConnectionError, BrokenPipeError) as e:
+            log.info("previous mpd command failed: %s" % e)
+            self.mpd_connect()
+
+
+
+    def options_changed(self, button, option):
+        """
+        """
+        try:
+            if option == "consume":
+                self.mpd.consume(int(button.get_active()))
+            elif option == "random":
+                self.mpd.random(int(button.get_active()))
+            elif option == "repeat":
+                self.mpd.repeat(int(button.get_active()))
+            elif option == "single":
+                self.mpd.single(int(button.get_active()))
+            else:
+                log.info("unhandled option: %s" % option)
+        except (musicpd.ConnectionError, BrokenPipeError) as e:
+            log.info("previous mpd command failed: %s" % e)
             self.mpd_connect()
 
 

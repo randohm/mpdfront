@@ -1,5 +1,6 @@
 # TODO
 
+- use status['elapsed']
 - turn off timeout on update
 - handle db updates in browser
 - config file for:
@@ -13,16 +14,21 @@
 - info pop error on no data
 - song counter finish and start over (DSD only??)
 - fetch album covers from web
-- playback grid class
+- playback layout class
+- playlist highlight current song
+- on stopped state, reset playback display
 
-- output select
-- shuffle
-- repeat
-- consume
+## MAYBE
 
 ? precaching
 
+## DONE
 
++ output select
++ shuffle
++ repeat
++ consume
++ playlist select song to play
 + make thread safe(r)
 + set song counter based on time elapsed
 + browser sorting: ignore "the"
