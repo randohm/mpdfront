@@ -6,11 +6,15 @@ The idea is that this will be the head on headless MPD in a home theater setup w
 
 ## Required libraries:
 
-- [musicpd](https://pypi.python.org/pypi/python-musicpd)
-- [gi](http://pygobject.readthedocs.io/en/latest/index.html) using:
+- [musicpd](https://pypi.python.org/pypi/python-musicpd) MPD client library
+- [PyGObject](http://pygobject.readthedocs.io/en/latest/index.html) using:
     - Gtk
     - Gdk
+    - GdkPixbuf
+    - Pango
+    - GObject
+- [Mutagen](https://mutagen.readthedocs.io/en/latest/) Audio file tags library
 
 ## Current Status
 
-Just tinkering around getting all the basic functions working.
+Working fairly well. Still a few bugs and TODOs left.
