@@ -1,11 +1,9 @@
 # TODO
 
+- make config file optional
 - use status['elapsed']
 - turn off timeout on update
 - handle db updates in browser
-- config file for:
-  - shortcut keys
-  - base music dir
 - focus on playlist after position change
 - song progress bar
 - category: songs
@@ -24,6 +22,9 @@
 
 ## DONE
 
++ config file for:
+  + shortcut keys
+  + base music dir
 + output select
 + shuffle
 + repeat

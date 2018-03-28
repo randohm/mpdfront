@@ -8,6 +8,7 @@ import sys, re, time, os, cgi
 import argparse
 import logging
 import threading
+import configparser
 import musicpd
 import mutagen
 from mutagen.id3 import ID3, APIC
@@ -98,6 +99,46 @@ def pp_time(secs):
         string with the time in the format of MM:SS
     """
     return "%d:%02d" % (int(int(secs)/60), int(secs)%60)
+
+
+
+class SongInfoDialog(Gtk.MessageDialog):
+    """
+    Shows a MessageDialog with song tags and information.
+    Click OK to exit.
+    """
+    def __init__(self, parent, song):
+        """
+        Build markup text to display, display markup text
+        """
+        Gtk.MessageDialog.__init__(self, parent, Gtk.DialogFlags.MODAL, Gtk.MessageType.INFO, Gtk.ButtonsType.OK)
+        song_text = ""
+        if 'title' in song:
+            song_text += "<span weight='ultrabold' size='xx-large'>%s</span>\n" % cgi.escape(song['title'])
+        if 'artist' in song:
+            song_text += "Artist: <span weight='bold' size='x-large'>%s</span>\n" % cgi.escape(song['artist'])
+        if 'album' in song:
+            song_text += "Album: <span weight='bold' size='large'>%s</span>\n" % cgi.escape(song['album'])
+        if 'time' in song:
+            song_text += "Time: %s\n" % cgi.escape(pp_time(song['time']))
+        if 'track' in song:
+            song_text += "Track: %s\n" % cgi.escape(song['track'])
+        if 'date' in song:
+            song_text += "Date: %s\n" % cgi.escape(song['date'])
+        if 'genre' in song:
+            song_text += "Genre: %s\n" % cgi.escape(song['genre'])
+
+        if song_text == "":
+            song_text = "File: %s" % cgi.escape(song['file'])
+        else:
+            song_text += "File: <small>%s</small>" % cgi.escape(song['file'])
+
+        self.set_name("song-info")
+        self.set_markup(song_text)
+        self.get_content_area().set_size_request(300, 300)
+        style_context = self.get_style_context()
+        style_context.add_provider(parent.css, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+        self.show_all()
 
 
 
@@ -289,21 +330,21 @@ class MPCFront(Gtk.Window):
         db_cache['Albums'][album]                = ditto
     """
 
-    run_idle = True             ## Allows the idle thread to run
-    #update_song_time = True     ## Allows song time to be updated
-    last_cover_file = ""        ## Tracks albumart for display
-    resize_event_on = False     ## Flag for albumart to resize
-    browser_full = False        ## Tracks if the browser is fullscreen
-    browser_hidden = False      ## Tracks if the browser is hidden
-    last_width = 0              ## Tracks width of window when window changes size
-    last_height = 0             ## Tracks height of window when window changes size
+    run_idle = True                 ## Allows the idle thread to run
+    #update_song_time = True        ## Allows song time to be updated
+    last_cover_file = ""            ## Tracks albumart for display
+    resize_event_on = False         ## Flag for albumart to resize
+    browser_full = False            ## Tracks if the browser is fullscreen
+    browser_hidden = False          ## Tracks if the browser is hidden
+    last_width = 0                  ## Tracks width of window when window changes size
+    last_height = 0                 ## Tracks height of window when window changes size
     do_update_playlist = False      ## Set when mpd has a playlist change event
     do_update_playback = False      ## Set when mpd has a player change event
     do_update_database = False      ## Set when mpd has a database change event
     current_playback_offset = 0     ## Offset into current song
     last_update_time = 0
     last_update_offset = 0
-    proc_file_fmt = "/proc/asound/card%d/pcm%dp/sub%d/hw_params"    ## proc file with DAC information
+    proc_file_fmt = "/proc/asound/card%s/pcm%sp/sub%s/hw_params"    ## proc file with DAC information
 
     ## Sleep times
     sleep_play = 500
@@ -319,7 +360,7 @@ class MPCFront(Gtk.Window):
     options_dialog = None
 
 
-    def __init__(self, host, port, rdir, css_file, width, height, card_id, device_id):
+    def __init__(self, config):
         """
         MPCFront constructor. Connects to MPD. Create main window and contained components.
 
@@ -327,19 +368,20 @@ class MPCFront(Gtk.Window):
             host: string, hostname/IP of the MPD server
             port: int, TCP port of the MPD server
         """
-        Gtk.Window.__init__(self, title="MPD - %s:%d" % (host, port))
+        Gtk.Window.__init__(self, title="MPD - %s:%s" % (config.get("main", "host"), config.get("main", "port")))
         GObject.threads_init()
         Gdk.threads_init()
         Gdk.threads_enter()
 
         self.set_decorated(False)
-        self.set_size_request(width, height)
+        self.set_size_request(int(config.get("main", "width")), int(config.get("main", "height")))
 
-        self.mpd_host = host
-        self.mpd_port = port
-        self.music_root_dir = rdir
-        self.card_id = card_id
-        self.device_id = device_id
+        self.config = config
+        self.mpd_host = self.config.get("main", "host")
+        self.mpd_port = int(self.config.get("main", "port"))
+        self.music_root_dir = self.config.get("main", "music_dir")
+        self.card_id = self.config.get("main", "sound_card")
+        self.device_id = self.config.get("main", "sound_device")
 
         if not self.mpd_connect():
             log.fatal("Could not connect to MPD")
@@ -354,9 +396,9 @@ class MPCFront(Gtk.Window):
 
         ## Set CSS
         css_style = None
-        log.debug("reading css file: %s" % css_file)
+        log.debug("reading css file: %s" % self.config.get("main", "style"))
         try:
-            fh = open(css_file, 'rb')
+            fh = open(self.config.get("main", "style"), 'rb')
             css_style = fh.read()
             fh.close()
         except Exception as e:
@@ -543,36 +585,36 @@ class MPCFront(Gtk.Window):
         try:
             if (ctrl or mod2) and event.keyval in (ord('q'), ord('Q')):
                 Gtk.main_quit()
-            elif event.keyval == ord(']'):
+            elif event.keyval == ord(self.config.get("keys", "playpause")):
                 #log.debug("PLAY/PAUSE")
                 self.play_or_pause()
-            elif event.keyval == ord('['):
+            elif event.keyval == ord(self.config.get("keys", "stop")):
                 #log.debug("STOP")
                 self.mpd.stop()
-            elif event.keyval == ord('.'):
+            elif event.keyval == ord(self.config.get("keys", "previous")):
                 #log.debug("PREVIOUS")
                 self.mpd.previous()
-            elif event.keyval == ord('/'):
+            elif event.keyval == ord(self.config.get("keys", "next")):
                 #log.debug("NEXT")
                 self.mpd.next()
-            elif event.keyval == ord(';'):
+            elif event.keyval == ord(self.config.get("keys", "rewind")):
                 #log.debug("REWIND")
                 self.mpd.seekcur("-5")
-            elif event.keyval == ord("'"):
+            elif event.keyval == ord(self.config.get("keys", "cue")):
                 #log.debug("CUE")
                 self.mpd.seekcur("+5")
 
-            elif event.keyval == ord(','):
+            elif event.keyval == ord(self.config.get("keys", "outputs")):
                 self.outputs_dialog = OutputsDialog(self, self.outputs_changed)
                 response = self.outputs_dialog.run()
                 self.outputs_dialog.destroy()
 
-            elif event.keyval == ord('-'):
+            elif event.keyval == ord(self.config.get("keys", "options")):
                 self.options_dialog = OptionsDialog(self, self.options_changed)
                 response = self.options_dialog.run()
                 self.options_dialog.destroy()
 
-            elif event.keyval == ord('1'):
+            elif event.keyval == ord(self.config.get("keys", "browser")):
                 ## Focus on the last selected row in the browser
                 selected_items = self.browser_box.get_selected_rows()
                 if not len(selected_items):
@@ -582,7 +624,7 @@ class MPCFront(Gtk.Window):
                 focus_row = focus_col.get_selected_row()
                 focus_row.grab_focus()
 
-            elif event.keyval == ord('2'):
+            elif event.keyval == ord(self.config.get("keys", "playlist")):
                 ## Focus on the selected row in the playlist
                 selected_row = self.playlist_list.get_selected_row()
                 if not selected_row:
@@ -590,7 +632,7 @@ class MPCFront(Gtk.Window):
                     self.playlist_list.select_row(self.playlist_list.get_children()[0])
                 selected_row.grab_focus()
 
-            elif event.keyval == ord('3'):
+            elif event.keyval == ord(self.config.get("keys", "full_browser")):
                 ## Hide bottom pane/fullscreen browser
                 if self.mainpaned.get_position() == self.last_height-1:
                     self.mainpaned.set_position(int(self.last_height/2))
@@ -600,7 +642,7 @@ class MPCFront(Gtk.Window):
                 else:
                     self.mainpaned.set_position(self.last_height)
 
-            elif event.keyval == ord('4'):
+            elif event.keyval == ord(self.config.get("keys", "full_bottom")):
                 ## Hide top pane
                 if self.mainpaned.get_position() == 0:
                     self.mainpaned.set_position(int(self.last_height/2))
@@ -610,7 +652,7 @@ class MPCFront(Gtk.Window):
                 self.set_current_albumart()
                 self.resize_event_on = False
 
-            elif event.keyval == ord('5'):
+            elif event.keyval == ord(self.config.get("keys", "full_playback")):
                 ## Hide playlist
                 if self.bottompaned.get_position() == self.last_width-1:
                     self.bottompaned.set_position(int(self.last_width/2))
@@ -620,7 +662,7 @@ class MPCFront(Gtk.Window):
                 self.set_current_albumart()
                 self.resize_event_on = False
 
-            elif event.keyval == ord('6'):
+            elif event.keyval == ord(self.config.get("keys", "full_playlist")):
                 ## Hide top pane
                 if self.bottompaned.get_position() == 0:
                     self.bottompaned.set_position(int(self.last_width/2))
@@ -654,7 +696,7 @@ class MPCFront(Gtk.Window):
             #log.debug("browser key: ENTER")
             self.add_to_playlist()
 
-        elif event.keyval == ord('\\'):
+        elif event.keyval == ord(self.config.get("keys", "info")):
             self.browser_info_popup()
 
 
@@ -663,7 +705,7 @@ class MPCFront(Gtk.Window):
             #log.debug("playlist key: ENTER")
             self.edit_playlist()
 
-        elif event.keyval == ord('\\'):
+        elif event.keyval == ord(self.config.get("keys", "info")):
             self.playlist_info_popup()
 
 ##  Click handlers
@@ -1084,7 +1126,7 @@ class MPCFront(Gtk.Window):
                 format_text = "%3.1f kHz %s bit PCM" % (float(freq)/1000, bits)
 
             dac_freq = dac_bits = ""
-            proc_file = self.proc_file_fmt % (self.card_id, self.device_id, 0)
+            proc_file = self.proc_file_fmt % (self.card_id, self.device_id, "0")
             #proc_file = "hw_params"
             #log.debug("proc file: %s" % proc_file)
             if os.path.exists(proc_file):
@@ -1729,7 +1771,7 @@ class MPCFront(Gtk.Window):
                 self.song_progress.set_value(0)
                 timeout = self.sleep_stop
             elif self.mpd_status['state'] == "pause":
-                self.current_time_label.set_text(pp_time(self.last_update_offset)+" Paused")
+                self.current_time_label.set_text(pp_time(self.last_update_offset)+" / "+pp_time(self.mpd_status['end_t'])+" Paused")
                 timeout = self.sleep_pause
             elif self.mpd_status['state'] == "play":
                 right_now = time.time()
@@ -1750,56 +1792,25 @@ class MPCFront(Gtk.Window):
 
 
 
-    def song_info_popup(self, song):
-        """
-        Displays a message dialog with information about the song
-        """
-        song_text = ""
-        if 'title' in song:
-            song_text += "<span weight='ultrabold' size='xx-large'>%s</span>\n" % cgi.escape(song['title'])
-        if 'artist' in song:
-            song_text += "Artist: <span weight='bold' size='x-large'>%s</span>\n" % cgi.escape(song['artist'])
-        if 'album' in song:
-            song_text += "Album: <span weight='bold' size='large'>%s</span>\n" % cgi.escape(song['album'])
-        if 'time' in song:
-            song_text += "Time: %s\n" % cgi.escape(pp_time(song['time']))
-        if 'track' in song:
-            song_text += "Track: %s\n" % cgi.escape(song['track'])
-        if 'date' in song:
-            song_text += "Date: %s\n" % cgi.escape(song['date'])
-        if 'genre' in song:
-            song_text += "Genre: %s\n" % cgi.escape(song['genre'])
-
-        if song_text == "":
-            song_text = "File: %s" % cgi.escape(song['file'])
-        else:
-            song_text += "File: <small>%s</small>" % cgi.escape(song['file'])
-
-        self.song_info_dialog = Gtk.MessageDialog(self, Gtk.DialogFlags.MODAL, Gtk.MessageType.INFO, Gtk.ButtonsType.OK)
-        self.song_info_dialog.set_name("song-info")
-        self.song_info_dialog.set_markup(song_text)
-        self.song_info_dialog.get_content_area().set_size_request(300, 300)
-        style_context = self.song_info_dialog.get_style_context()
-        style_context.add_provider(self.css, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
-        #self.song_info_dialog.show_all()
-        self.song_info_dialog.run()
-        self.song_info_dialog.destroy()
-
-
-
     def playlist_info_popup(self):
         """
+        Call SongInfoDialog to display the song data from the selected playlist row
         """
         song = self.playlist_list.get_selected_row().get_child().data
-        self.song_info_popup(song)
+        dialog = SongInfoDialog(self, song)
+        dialog.run()
+        dialog.destroy()
 
 
 
     def browser_info_popup(self):
         """
+        Call SongInfoDialog to display the song data from the selected browser row
         """
         song = self.browser_box.get_selected_rows()[-1]['data']
-        self.song_info_popup(song)
+        dialog = SongInfoDialog(self, song)
+        dialog.run()
+        dialog.destroy()
 
 
 
@@ -1870,18 +1881,27 @@ class MPCFront(Gtk.Window):
 if __name__ == "__main__":
     arg_parser = argparse.ArgumentParser(description="MPD Frontend", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     #arg_parser.add_argument("-v", "--verbose", action='store_true', help="Turn on verbose output.")
-    arg_parser.add_argument("-H", "--host", default=default_mpd_host, action='store', help="Remote host name or IP address.")
-    arg_parser.add_argument("-p", "--port", default=default_mpd_port, type=int, action='store', help="Remote TCP port number.")
-    arg_parser.add_argument("-c", "--css", default=default_css_file, action='store', help="CSS file for the Gtk App.")
-    arg_parser.add_argument("-d", "--dir", default=default_root_dir, action='store', help="Root music directory.")
-    arg_parser.add_argument("-x", "--width", default=default_window_width, type=int, action='store', help="Width of window.")
-    arg_parser.add_argument("-y", "--height", default=default_window_height, type=int, action='store', help="Height of the window.")
-    arg_parser.add_argument("-s", "--card", default=default_card_id, type=int, action='store', help="ID of the sound device.")
-    arg_parser.add_argument("-t", "--dev", default=default_device_id, type=int, action='store', help="ID of the playback device on the sound device.")
+    #arg_parser.add_argument("-H", "--host", default=default_mpd_host, action='store', help="Remote host name or IP address.")
+    #arg_parser.add_argument("-p", "--port", default=default_mpd_port, type=int, action='store', help="Remote TCP port number.")
+    #arg_parser.add_argument("-C", "--css", default=default_css_file, action='store', help="CSS file for the Gtk App.")
+    #arg_parser.add_argument("-d", "--dir", default=default_root_dir, action='store', help="Root music directory.")
+    #arg_parser.add_argument("-x", "--width", default=default_window_width, type=int, action='store', help="Width of window.")
+    #arg_parser.add_argument("-y", "--height", default=default_window_height, type=int, action='store', help="Height of the window.")
+    #arg_parser.add_argument("-s", "--card", default=default_card_id, type=int, action='store', help="ID of the sound device.")
+    #arg_parser.add_argument("-t", "--dev", default=default_device_id, type=int, action='store', help="ID of the playback device on the sound device.")
+    arg_parser.add_argument("-c", "--config", action='store', help="Config file.")
     args = arg_parser.parse_args()
 
     try:
-        window = MPCFront(args.host, args.port, args.dir, args.css, args.width, args.height, args.card, args.dev)
+        if args.config:
+            config = configparser.ConfigParser()
+            config.read(args.config)
+            #log.debug("config: %s" % config.sections())
+            window = MPCFront(config)
+        else:
+            #window = MPCFront(None, args.host, args.port, args.dir, args.css, args.width, args.height, args.card, args.dev)
+            print("Config file (-c) is a required argument.")
+            sys.exit(1)
     except Exception as e:
         log.fatal("Application failed: %s" % e)
         sys.exit(1)
