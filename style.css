@@ -1,8 +1,4 @@
 * {
-    /*
-    background-color: #a0a0a0;
-    color: black;
-    */
     border-style: solid;
     border-top-color: black;
     border-bottom-color: black;
@@ -11,7 +7,6 @@
 }
 
 window {
-    /*background-color: #555555;*/
     background: linear-gradient(lightgray, #404040);
     color: white;
     font-size: 18pt;
@@ -23,12 +18,10 @@ box {
 }
 
 grid#playback-pane label {
-    /*background-color: #b0b0b0;*/
     padding: 0px 8px 8px 8px;
 }
 
 grid#playback-pane image{
-    /*background-color: #404040;*/
     padding: 0px 0px 0px 0px;
 }
 
@@ -40,7 +33,6 @@ label#current-title {
     font-size: 36pt;
     font-weight: bold;
     text-shadow: -2px -2px 2px black, 2px -2px 2px black, -2px 2px 2px black, 2px 2px 2px black;
-    /*text-shadow: 2px 2px 4px #000000;*/
 }
 
 label#current-artist {
@@ -85,11 +77,10 @@ dialog, messagedialog {
     background-color: #d5e5e5;
 }
 
-/*
-scrolledwindow * {
-    background-color: lightgray;
+scrolledwindow *#current, scrolledwindow * *#current {
+    background-color: #404040;
+    color: #f0f080;
 }
-*/
 
 scrolledwindow *:selected, scrolledwindow *:selected * {
     background-color: #505065;

@@ -9,7 +9,11 @@ import argparse
 import logging
 import threading
 import configparser
+import requests
+import imghdr
+import PIL
 import musicpd
+import pylast
 import mutagen
 from mutagen.id3 import ID3, APIC
 from mutagen.flac import FLAC
@@ -47,6 +51,7 @@ default_css_file = "style.css"
 default_root_dir = "/"
 default_card_id = 0
 default_device_id = 0
+default_config_file = os.environ['HOME']+"/.mpdfront.cfg"
 
 
 
@@ -144,9 +149,14 @@ class SongInfoDialog(Gtk.MessageDialog):
 
 class OutputsDialog(Gtk.Dialog):
     """
+    Display dialog with list of outputs as individual CheckButtons.
+    Button click events are handled by a callback function passed to __init__.
     """
     def __init__(self, parent, button_pressed_callback):
         """
+        Args:
+            parent: parent window
+            button_pressed_callback: callback function handling checkbutton click events. callback accepts 1 arg with the output ID.
         """
         Gtk.Dialog.__init__(self, "Select Outputs", parent, Gtk.DialogFlags.MODAL, ("Close", 0))
         self.set_name("outputs-dialog")
@@ -163,9 +173,14 @@ class OutputsDialog(Gtk.Dialog):
 
 class OptionsDialog(Gtk.Dialog):
     """
+    Displays dialog of options. Each option is an individual CheckButton.
+    Button click events are handled by a callback function passed to __init__.
     """
     def __init__(self, parent, button_pressed_callback):
         """
+        Args:
+            parent: parent window
+            button_pressed_callback: callback function handling checkbutton click events. callback accepts 1 arg with the option name.
         """
         Gtk.Dialog.__init__(self, "Set Options", parent, Gtk.DialogFlags.MODAL, ("Close", 0))
         self.set_name("options-dialog")
@@ -342,9 +357,13 @@ class MPCFront(Gtk.Window):
     do_update_playback = False      ## Set when mpd has a player change event
     do_update_database = False      ## Set when mpd has a database change event
     current_playback_offset = 0     ## Offset into current song
-    last_update_time = 0
-    last_update_offset = 0
+    last_update_time = 0            ## Epoch time of last display update
+    last_update_offset = 0          ## Time offset into a song at the last display update
     proc_file_fmt = "/proc/asound/card%s/pcm%sp/sub%s/hw_params"    ## proc file with DAC information
+    art_cache = {}                  ## Cache for album art, etc.
+    playlist_last_selected = None   ## Points to last selected song in playlist
+    focus_on = "broswer"            ## Either 'playlist' or 'browser'
+
 
     ## Sleep times
     sleep_play = 500
@@ -545,11 +564,20 @@ class MPCFront(Gtk.Window):
 
         self.set_resizable(True)
         self.present()
-        self.get_focus()
+        self.grab_focus()
 
-        self.playlist_list.select_row(self.playlist_list.get_row_at_index(0))
+        if re.match(r'yes$', self.config.get("main", "fullscreen"), re.IGNORECASE):
+            self.fullscreen()
+
+        self.get_albumartists()
+        self.get_artists()
+        self.get_albums()
+        self.get_genres()
+        self.get_files_list()
+
+        self.playlist_last_selected = 0
+        self.playlist_list.select_row(self.playlist_list.get_row_at_index(self.playlist_last_selected))
         self.browser_box.columns[0].select_row(self.browser_box.columns[0].get_row_at_index(0))
-
 
 
 
@@ -616,9 +644,10 @@ class MPCFront(Gtk.Window):
 
             elif event.keyval == ord(self.config.get("keys", "browser")):
                 ## Focus on the last selected row in the browser
+                self.focus_on = "broswer"
                 selected_items = self.browser_box.get_selected_rows()
                 if not len(selected_items):
-                    self.browser_box.columns[0].select_row(self.browser_box.columns[0].get_children()[0])
+                    self.browser_box.columns[0].select_row(self.browser_box.columns[0].get_row_at_index(0))
                     selected_items = self.browser_box.get_selected_rows()
                 focus_col = self.browser_box.columns[len(selected_items)-1]
                 focus_row = focus_col.get_selected_row()
@@ -626,10 +655,11 @@ class MPCFront(Gtk.Window):
 
             elif event.keyval == ord(self.config.get("keys", "playlist")):
                 ## Focus on the selected row in the playlist
+                self.focus_on = "playlist"
                 selected_row = self.playlist_list.get_selected_row()
                 if not selected_row:
-                    selected_row = self.playlist_list.get_children()[0]
-                    self.playlist_list.select_row(self.playlist_list.get_children()[0])
+                    selected_row = self.playlist_list.get_row_at_index(0)
+                    self.playlist_list.select_row(selected_row)
                 selected_row.grab_focus()
 
             elif event.keyval == ord(self.config.get("keys", "full_browser")):
@@ -965,13 +995,16 @@ class MPCFront(Gtk.Window):
 
     def get_albumart(self, audiofile):
         """
-        Extract album art from a file, or look for a cover in its directory
+        Extract album art from a file, or look for a cover in its directory.
+        Tries to fetch art from Last.fm if all else fails.
         Args:
             audiofile: string, path of the file containing the audio data
         Returns:
             raw image data
         """
         img_data = None
+
+        ## Try to find album art in the media file
         try:
             if re.search(r'\.flac$', self.mpd_currentsong['file'], re.IGNORECASE):
                 a = FLAC(audiofile)
@@ -991,6 +1024,7 @@ class MPCFront(Gtk.Window):
         except Exception as e:
             log.error("could not open audio file: %s" % e)
 
+        ## Look for album art on the directory of the media file
         if not img_data:
             cover_path = ""
             song_dir =  self.music_root_dir+"/"+os.path.dirname(self.mpd_currentsong['file'])
@@ -999,18 +1033,69 @@ class MPCFront(Gtk.Window):
                     cover_path = song_dir+"/"+f
                     break
             log.debug("looking for cover file: %s" % cover_path)
-            if not os.path.isfile(cover_path): ## Backup blank image. TODO: fix this
-                cover_path = "cover.jpg"
-            try:
-                cf = open(cover_path, 'rb')
-                img_data = cf.read()
-                cf.close()
-            except Exception as e:
-                log.error("error reading cover file: %s" % e)
+            if os.path.isfile(cover_path):
+                try:
+                    cf = open(cover_path, 'rb')
+                    img_data = cf.read()
+                    cf.close()
+                except Exception as e:
+                    log.error("error reading cover file: %s" % e)
+
+        ## Look up the album art in Last.fm if configured
+        if not img_data:
+            ## Check cache for album art before querying lastfm
+            if self.mpd_currentsong['artist'] in self.art_cache and self.mpd_currentsong['album'] in self.art_cache[self.mpd_currentsong['artist']] and 'image_data' in self.art_cache[self.mpd_currentsong['artist']][self.mpd_currentsong['album']]:
+                log.debug("lastfm lookup already cached")
+                img_data = self.art_cache[self.mpd_currentsong['artist']][self.mpd_currentsong['album']]['image_data']
+
+            elif self.config.get("lastfm", "api_key") and self.config.get("lastfm", "api_secret"):
+                image_url = ""
+                try:
+                    lastfm = pylast.LastFMNetwork(api_key=self.config.get("lastfm", "api_key"), api_secret=self.config.get("lastfm", "api_secret"))
+                    album = lastfm.get_album(self.mpd_currentsong['artist'], self.mpd_currentsong['album'])
+                    image_url = album.get_cover_image()
+                    log.debug("lastfm cover url: %s" % image_url)
+                    if image_url:
+                        if self.mpd_currentsong['artist'] not in self.art_cache:
+                            self.art_cache[self.mpd_currentsong['artist']] = {}
+                        self.art_cache[self.mpd_currentsong['artist']][self.mpd_currentsong['album']] = {}
+                        self.art_cache[self.mpd_currentsong['artist']][self.mpd_currentsong['album']]['image_url'] = image_url
+                        r = requests.get(image_url)
+                        img_data = r.content
+                        self.art_cache[self.mpd_currentsong['artist']][self.mpd_currentsong['album']]['image_data'] = img_data
+
+                        if re.match(r'yes$', self.config.get("lastfm", "save_cover"), re.IGNORECASE):
+                            log.debug("saving album art for: %s / %s" % (self.mpd_currentsong['artist'], self.mpd_currentsong['album']))
+                            self.save_albumart(img_data, audiofile)
+                except Exception as e:
+                    log.error("error fetch cover file from lastfm: %s" % e)
 
         return img_data
 
 
+
+    def save_albumart(self, img_data, song_path):
+        """
+        Determines the filetype, then writes the file out into the same diredtory as song_path.
+        """
+        ftype = imghdr.what(None, img_data)
+        log.debug("image type: %s" % ftype)
+        if ftype == "jpeg":
+            ftype = "jpg"
+
+        cover_file = os.path.dirname(song_path)+"/cover."+ftype
+        if os.path.exists(cover_file):
+            log.info("not saving file, already exixsts: %s" % cover_file)
+            return
+        log.debug("saving album art to: %s" % cover_file)
+        try:
+            aaf= open(cover_file, "wb")
+            aaf.write(img_data)
+            aaf.close()
+        except Exception as e:
+            log.error("could not save album art: %s" % e)
+
+        
 
     def set_current_albumart(self):
         """
@@ -1025,12 +1110,19 @@ class MPCFront(Gtk.Window):
         if self.last_cover_file != audiofile:
             log.debug("new cover file, overwriting")
             img_data = self.get_albumart(audiofile)
-            if not img_data:
+            if img_data:
+                try:
+                    cf = open(cover_file, "wb")
+                    cf.write(img_data)
+                    cf.close()
+                except Exception as e:
+                    log.error("error writing cover file: %s" % e)
+                self.current_albumart_raw.set_from_file(cover_file)
+            else:
+                self.current_albumart_raw.clear()
+                self.current_albumart.clear()
+                self.last_cover_file = audiofile
                 return
-            cf = open(cover_file, "wb")
-            cf.write(img_data)
-            cf.close()
-            self.current_albumart_raw.set_from_file(cover_file)
 
         if self.last_cover_file != audiofile or self.resize_event_on:
             window_height = self.get_allocated_height()
@@ -1056,7 +1148,8 @@ class MPCFront(Gtk.Window):
                 self.current_albumart.set_from_pixbuf(pixbuf)
             else:
                 log.info("could not get pixbuf")
-            self.last_cover_file = audiofile
+                self.current_albumart.clear()
+        self.last_cover_file = audiofile
 
 
 
@@ -1127,7 +1220,6 @@ class MPCFront(Gtk.Window):
 
             dac_freq = dac_bits = ""
             proc_file = self.proc_file_fmt % (self.card_id, self.device_id, "0")
-            #proc_file = "hw_params"
             #log.debug("proc file: %s" % proc_file)
             if os.path.exists(proc_file):
                 lines = ()
@@ -1217,8 +1309,6 @@ class MPCFront(Gtk.Window):
             mpd = self.mpd
         playlist = self.get_playlist(mpd)
         #log.debug("playlist: %s" % playlist)
-        if not playlist:
-            return
 
         ## Empty list if aleady populated
         children = self.playlist_list.get_children()
@@ -1226,6 +1316,9 @@ class MPCFront(Gtk.Window):
             for c in children:
                 self.playlist_list.remove(c)
                 c.destroy()
+
+        if not playlist:
+            return
 
         ## Add songs to the list
         for song in playlist:
@@ -1241,6 +1334,13 @@ class MPCFront(Gtk.Window):
             label.set_halign(Gtk.Align.START)
             self.playlist_list.add(label)
 
+        if not self.playlist_last_selected is None:
+            self.playlist_list.select_row(self.playlist_list.get_row_at_index(self.playlist_last_selected))
+
+        if self.focus_on == "playlist":
+            self.playlist_list.get_row_at_index(self.playlist_last_selected).grab_focus()
+
+        self.playlist_list.get_row_at_index(int(self.mpd_currentsong['pos'])).set_name("current")
         self.playlist_list.show_all()
 
 
@@ -1729,10 +1829,12 @@ class MPCFront(Gtk.Window):
             if response == 1:
                 #log.debug("Moving song up 1 place from %d" % index)
                 if index > 0:
-                    self.mpd.moveid(song['id'], index-1)
+                    index -= 1
+                    self.mpd.moveid(song['id'], index)
             elif response == 2:
                 #log.debug("Moving song down 1 place from %d" % index)
-                self.mpd.moveid(song['id'], index+1)
+                index += 1
+                self.mpd.moveid(song['id'], index)
             elif response == 3:
                 #log.debug("Deleting song at %d" % index)
                 self.mpd.deleteid(song['id'])
@@ -1744,6 +1846,8 @@ class MPCFront(Gtk.Window):
             self.mpd_connect()
         except Exception as e:
             log.error("editing playlist: %s" % e)
+
+        self.playlist_last_selected = index
 
 
 
@@ -1818,19 +1922,47 @@ class MPCFront(Gtk.Window):
         """
         """
         try:
+            """
+            ## Make sure cache paths exist
+            cache = None
+            if len(path):
+                path_list = re.split(r'/', path)
+                log.debug("path list: %s" % path_list)
+                cache = self.db_cache['Files']
+                for p in path_list:
+                    if p not in cache:
+                        log.debug("caching file: %s" % p)
+                        cache[p] = {}
+                    cache = cache[p]
+            log.debug("file cache: %s" % cache)
+
+            if cache:
+                rows = []
+                for f in cache:
+                    rows.append(f)
+            """
+
             files = self.mpd.lsinfo(path)
+            #log.debug("files from mpd: %s" % files)
             rows = []
             for f in files:
+                #log.debug("files list: %s" % f)
                 if 'directory' in f:
                     dirname = os.path.basename(f['directory'])
                     rows.append({'type': 'directory', 'value': dirname, 'data': {'name': dirname, 'dir': f['directory']}})
                 elif 'file' in f:
-                    finfo = self.mpd.lsinfo(f['file'])[0]
+                    filename = os.path.basename(f['file'])
+                    finfo = None
+                    if filename in cache:
+                        finfo = cache[filename]
+                    else:
+                        finfo = self.mpd.lsinfo(f['file'])[0]
                     if not finfo:
                         finfo = { 'file': f['file']}
                     #log.debug("file info: %s %s" % (f['file'], finfo))
-                    filename = os.path.basename(f['file'])
                     rows.append({'type': 'file', 'value': filename, 'data': finfo})
+                    #cache[filename] = finfo
+                    #log.debug("db cache files: %s" % self.db_cache['Files'])
             return rows
 
         except (musicpd.ConnectionError, BrokenPipeError) as e:
@@ -1889,9 +2021,13 @@ if __name__ == "__main__":
     #arg_parser.add_argument("-y", "--height", default=default_window_height, type=int, action='store', help="Height of the window.")
     #arg_parser.add_argument("-s", "--card", default=default_card_id, type=int, action='store', help="ID of the sound device.")
     #arg_parser.add_argument("-t", "--dev", default=default_device_id, type=int, action='store', help="ID of the playback device on the sound device.")
-    arg_parser.add_argument("-c", "--config", action='store', help="Config file.")
+    arg_parser.add_argument("-c", "--config", default=default_config_file, action='store', help="Config file.")
     args = arg_parser.parse_args()
 
+    config = configparser.ConfigParser()
+    config.read(args.config)
+    window = MPCFront(config)
+    """
     try:
         if args.config:
             config = configparser.ConfigParser()
@@ -1905,6 +2041,7 @@ if __name__ == "__main__":
     except Exception as e:
         log.fatal("Application failed: %s" % e)
         sys.exit(1)
+    """
     window.show_all()
     Gtk.main()
     sys.exit(0)

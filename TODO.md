@@ -1,20 +1,22 @@
 # TODO
 
+- on delete, fetch status, current song
+- grab focus by correct pane
+- focus on playlist after position change
 - make config file optional
+- `db_cache` for files
 - use status['elapsed']
 - turn off timeout on update
 - handle db updates in browser
-- focus on playlist after position change
 - song progress bar
 - category: songs
-- album covers not stored to temp file
 - column browser out of range error
 - info pop error on no data
 - song counter finish and start over (DSD only??)
-- fetch album covers from web
 - playback layout class
-- playlist highlight current song
 - on stopped state, reset playback display
+- album covers not stored to temp file
+- set/change sound card/device in app
 
 ## MAYBE
 
@@ -22,6 +24,9 @@
 
 ## DONE
 
++ highlight playlist current song
++ playlist highlight current song
++ fetch album covers from web
 + config file for:
   + shortcut keys
   + base music dir
