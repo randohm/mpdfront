@@ -28,7 +28,7 @@ Working fairly well. Still a few bugs and TODOs left.
 ## Usage
 
 ```
-usage: mpdfront.py [-h] [-c CONFIG]
+usage: mpdfront [-h] [-c CONFIG]
 
 MPD Frontend
 
