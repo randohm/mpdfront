@@ -4,7 +4,7 @@
 Music Player Daemon Frontend. Adds a head to headless MPD.
 """
 
-import sys, re, time, os, cgi
+import sys, re, time, os, cgi, io
 import argparse
 import logging
 import threading
@@ -12,6 +12,7 @@ import configparser
 import requests
 import imghdr
 import PIL
+from PIL import Image
 import musicpd
 import pylast
 import mutagen
@@ -21,7 +22,7 @@ from mutagen.dsf import DSF
 from mutagen.mp4 import MP4
 import gi
 gi.require_version("Gtk", "3.0")
-from gi.repository import Gtk, Gdk, GdkPixbuf, GObject, Pango
+from gi.repository import Gtk, Gdk, GdkPixbuf, GObject, Pango, GLib
 
 
 
@@ -347,7 +348,7 @@ class MPCFront(Gtk.Window):
 
     run_idle = True                 ## Allows the idle thread to run
     #update_song_time = True        ## Allows song time to be updated
-    last_cover_file = ""            ## Tracks albumart for display
+    last_audiofile = ""             ## Tracks albumart for display
     resize_event_on = False         ## Flag for albumart to resize
     browser_full = False            ## Tracks if the browser is fullscreen
     browser_hidden = False          ## Tracks if the browser is hidden
@@ -363,6 +364,7 @@ class MPCFront(Gtk.Window):
     art_cache = {}                  ## Cache for album art, etc.
     playlist_last_selected = None   ## Points to last selected song in playlist
     focus_on = "broswer"            ## Either 'playlist' or 'browser'
+    current_albumart_pixbuf = None  ## GdkPixbuf storing the current album art
 
 
     ## Sleep times
@@ -446,19 +448,65 @@ class MPCFront(Gtk.Window):
             { 'type': 'category', 'value': 'Genres', 'data': None },
             { 'type': 'category', 'value': 'Songs', 'data': None }
         ]
-        #for i in self.db_cache.keys():
-        #    rows.append({ 'type': 'category', 'value': i, 'data': None})
         self.browser_box.set_column_data(0, rows)
 
         ## Setup bottom half
         self.bottompaned = Gtk.HPaned()
         self.mainpaned.add2(self.bottompaned)
+        self.init_playback_display()
 
+        ## Setup playlist
+        self.playlist_list = Gtk.ListBox()
+        #self.playlist_list.set_hexpand(True)
+        #self.playlist_list.set_vexpand(True)
+        self.playlist_scroll = Gtk.ScrolledWindow()
+        self.playlist_scroll.set_hexpand(True)
+        self.playlist_scroll.add(self.playlist_list)
+        self.bottompaned.add2(self.playlist_scroll)
+
+        ## Set event handlers
+        self.connect("delete-event", Gtk.main_quit)
+        self.connect("destroy", Gtk.main_quit)
+        self.connect("destroy-event", Gtk.main_quit)
+        self.connect("key-press-event", self.key_pressed)
+        self.connect("check-resize", self.window_resized)
+        self.previous_button.connect("clicked", self.previous_clicked)
+        self.rewind_button.connect("clicked", self.rewind_clicked)
+        self.stop_button.connect("clicked", self.stop_clicked)
+        self.play_button.connect("clicked", self.play_clicked)
+        self.cue_button.connect("clicked", self.cue_clicked)
+        self.next_button.connect("clicked", self.next_clicked)
+        self.playlist_list.connect("key-press-event", self.playlist_key_pressed)
+
+        self.update_playback()
+        self.update_playlist()
+
+        self.spawn_idle_thread()
+        self.playback_timeout_id = GObject.timeout_add(self.sleep_play, self.playback_timeout)
+
+        #self.set_resizable(True)
+        self.present()
+        self.grab_focus()
+
+        if re.match(r'yes$', self.config.get("main", "fullscreen"), re.IGNORECASE):
+            self.fullscreen()
+
+        self.get_albumartists()
+        self.get_artists()
+        self.get_albums()
+        self.get_genres()
+        self.get_files_list()
+
+        self.playlist_last_selected = 0
+        self.playlist_list.select_row(self.playlist_list.get_row_at_index(self.playlist_last_selected))
+        self.browser_box.columns[0].select_row(self.browser_box.columns[0].get_row_at_index(0))
+
+
+
+    def init_playback_display(self):
         ## Setup playback grid
         self.playback_grid = Gtk.Grid()
         self.playback_grid.set_name("playback-pane")
-        #self.playback_grid.set_row_spacing(10)
-        #self.playback_grid.set_column_spacing(10)
         self.bottompaned.add1(self.playback_grid)
         self.current_title_label = Gtk.Label(" ")
         self.current_title_label.set_name("current-title")
@@ -491,11 +539,8 @@ class MPCFront(Gtk.Window):
         self.current_time_label.set_name("current-time")
         self.current_time_label.set_halign(Gtk.Align.START)
         self.current_time_label.set_valign(Gtk.Align.END)
-        #self.end_time_label = Gtk.Label("00:00")
-        #self.end_time_label.set_name("end-time")
-        #self.end_time_label.set_halign(Gtk.Align.END)
-        #self.end_time_label.set_valign(Gtk.Align.END)
 
+        ## Add labels to playback grid
         self.playback_grid.attach(self.current_title_label,  0, 0, 1, 1)
         self.playback_grid.attach(self.current_artist_label, 0, 1, 1, 1)
         self.playback_grid.attach(self.current_album_label,  0, 2, 1, 1)
@@ -504,6 +549,7 @@ class MPCFront(Gtk.Window):
         self.playback_grid.attach(self.current_time_label,   0, 5, 1, 1)
         #self.playback_grid.attach(self.end_time_label,       1, 5, 1, 1)
 
+        ## Song progress bar
         self.song_progress = Gtk.LevelBar()
         self.song_progress.set_size_request(-1, 20)
         self.song_progress.set_name("progressbar")
@@ -512,7 +558,6 @@ class MPCFront(Gtk.Window):
         ## Setup playback button box
         self.playback_button_box = Gtk.Box()
         self.playback_grid.attach(self.playback_button_box,  0, 7, 2, 1)
-
         self.previous_button = Gtk.Button(symbol_previous)
         self.rewind_button = Gtk.Button(symbol_rewind)
         self.stop_button = Gtk.Button(symbol_stop)
@@ -526,58 +571,12 @@ class MPCFront(Gtk.Window):
         self.playback_button_box.pack_start(self.cue_button, True, True, 3)
         self.playback_button_box.pack_start(self.next_button, True, True, 3)
 
-        self.current_albumart_raw = Gtk.Image()
+        ## Current album art
         self.current_albumart = Gtk.Image()
         self.current_albumart.set_valign(Gtk.Align.START)
         self.current_albumart.set_vexpand(True)
         #self.current_albumart.set_hexpand(True)
         self.playback_grid.attach(self.current_albumart, 1, 0, 1, 6)
-
-        ## Setup playlist
-        self.playlist_list = Gtk.ListBox()
-        #self.playlist_list.set_hexpand(True)
-        #self.playlist_list.set_vexpand(True)
-        self.playlist_scroll = Gtk.ScrolledWindow()
-        self.playlist_scroll.set_hexpand(True)
-        self.playlist_scroll.add(self.playlist_list)
-        self.bottompaned.add2(self.playlist_scroll)
-
-        ## Set event handlers
-        self.connect("delete-event", Gtk.main_quit)
-        self.connect("destroy", Gtk.main_quit)
-        self.connect("destroy-event", Gtk.main_quit)
-        self.connect("key-press-event", self.key_pressed)
-        self.connect("check-resize", self.window_resized)
-        self.previous_button.connect("clicked", self.previous_clicked)
-        self.rewind_button.connect("clicked", self.rewind_clicked)
-        self.stop_button.connect("clicked", self.stop_clicked)
-        self.play_button.connect("clicked", self.play_clicked)
-        self.cue_button.connect("clicked", self.cue_clicked)
-        self.next_button.connect("clicked", self.next_clicked)
-        self.playlist_list.connect("key-press-event", self.playlist_key_pressed)
-
-        self.update_playback()
-        self.update_playlist()
-
-        self.spawn_idle_thread()
-        self.playback_timeout_id = GObject.timeout_add(self.sleep_play, self.playback_timeout)
-
-        self.set_resizable(True)
-        self.present()
-        self.grab_focus()
-
-        if re.match(r'yes$', self.config.get("main", "fullscreen"), re.IGNORECASE):
-            self.fullscreen()
-
-        self.get_albumartists()
-        self.get_artists()
-        self.get_albums()
-        self.get_genres()
-        self.get_files_list()
-
-        self.playlist_last_selected = 0
-        self.playlist_list.select_row(self.playlist_list.get_row_at_index(self.playlist_last_selected))
-        self.browser_box.columns[0].select_row(self.browser_box.columns[0].get_row_at_index(0))
 
 
 
@@ -1104,33 +1103,28 @@ class MPCFront(Gtk.Window):
         if not self.mpd_currentsong or not 'file' in self.mpd_currentsong.keys():
             return
 
-        cover_file = "/tmp/mpdfront_cover"
         audiofile = self.music_root_dir+"/"+self.mpd_currentsong['file']
 
-        if self.last_cover_file != audiofile:
-            log.debug("new cover file, overwriting")
+        if self.last_audiofile != audiofile:
+            log.debug("new cover file, updating")
             img_data = self.get_albumart(audiofile)
             if img_data:
-                try:
-                    cf = open(cover_file, "wb")
-                    cf.write(img_data)
-                    cf.close()
-                except Exception as e:
-                    log.error("error writing cover file: %s" % e)
-                self.current_albumart_raw.set_from_file(cover_file)
+                img = Image.open(io.BytesIO(img_data))
+                img_bytes = GLib.Bytes.new(img.tobytes())
+                log.debug("image size: %d x %d" % img.size)
+                w, h = img.size
+                self.current_albumart_pixbuf = GdkPixbuf.Pixbuf.new_from_bytes(img_bytes, GdkPixbuf.Colorspace.RGB, False, 8, w, h, w*3)
             else:
-                self.current_albumart_raw.clear()
                 self.current_albumart.clear()
-                self.last_cover_file = audiofile
+                self.last_audiofile = audiofile
                 return
 
-        if self.last_cover_file != audiofile or self.resize_event_on:
+        if self.last_audiofile != audiofile or self.resize_event_on:
             window_height = self.get_allocated_height()
             paned_position = self.mainpaned.get_position()
-            #from_bottom = self.playback_button_box.get_allocated_height() + self.song_progress.get_allocated_height() + self.end_time_label.get_allocated_height()
             from_bottom = self.playback_button_box.get_allocated_height() + self.song_progress.get_allocated_height()
             log.debug("wh: %d, pp: %d, ftb: %d" % (window_height, paned_position, from_bottom))
-            if from_bottom < 50:
+            if from_bottom < 20:
                 from_bottom = 76
             image_height = window_height - from_bottom - paned_position
 
@@ -1139,17 +1133,18 @@ class MPCFront(Gtk.Window):
             image_width = int((window_width - (window_width - paned_position))/2)
 
             image_height = min(image_width, image_height)
+            if image_height <1:
+                image_height = 100
 
             ## Assume all albumart should be more or less square
             log.debug("Setting image to %d x %d, window height: %d" % (image_height, image_height, window_height))
-            pixbuf = self.current_albumart_raw.get_pixbuf()
-            if pixbuf:
-                pixbuf = pixbuf.scale_simple(image_height, image_height, GdkPixbuf.InterpType.BILINEAR)
+            if self.current_albumart_pixbuf:
+                pixbuf = self.current_albumart_pixbuf.scale_simple(image_height, image_height, GdkPixbuf.InterpType.BILINEAR)
                 self.current_albumart.set_from_pixbuf(pixbuf)
             else:
                 log.info("could not get pixbuf")
                 self.current_albumart.clear()
-        self.last_cover_file = audiofile
+        self.last_audiofile = audiofile
 
 
 
@@ -2012,15 +2007,6 @@ class MPCFront(Gtk.Window):
 
 if __name__ == "__main__":
     arg_parser = argparse.ArgumentParser(description="MPD Frontend", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    #arg_parser.add_argument("-v", "--verbose", action='store_true', help="Turn on verbose output.")
-    #arg_parser.add_argument("-H", "--host", default=default_mpd_host, action='store', help="Remote host name or IP address.")
-    #arg_parser.add_argument("-p", "--port", default=default_mpd_port, type=int, action='store', help="Remote TCP port number.")
-    #arg_parser.add_argument("-C", "--css", default=default_css_file, action='store', help="CSS file for the Gtk App.")
-    #arg_parser.add_argument("-d", "--dir", default=default_root_dir, action='store', help="Root music directory.")
-    #arg_parser.add_argument("-x", "--width", default=default_window_width, type=int, action='store', help="Width of window.")
-    #arg_parser.add_argument("-y", "--height", default=default_window_height, type=int, action='store', help="Height of the window.")
-    #arg_parser.add_argument("-s", "--card", default=default_card_id, type=int, action='store', help="ID of the sound device.")
-    #arg_parser.add_argument("-t", "--dev", default=default_device_id, type=int, action='store', help="ID of the playback device on the sound device.")
     arg_parser.add_argument("-c", "--config", default=default_config_file, action='store', help="Config file.")
     args = arg_parser.parse_args()
 

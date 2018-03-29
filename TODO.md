@@ -1,9 +1,9 @@
 # TODO
 
+- redo playback layout
 - on delete, fetch status, current song
 - grab focus by correct pane
 - focus on playlist after position change
-- make config file optional
 - `db_cache` for files
 - use status['elapsed']
 - turn off timeout on update
@@ -15,15 +15,16 @@
 - song counter finish and start over (DSD only??)
 - playback layout class
 - on stopped state, reset playback display
-- album covers not stored to temp file
 - set/change sound card/device in app
+- write default config file
 
 ## MAYBE
 
-? precaching
+? precaching `db_cache`
 
 ## DONE
 
++ album covers not stored to temp file
 + highlight playlist current song
 + playlist highlight current song
 + fetch album covers from web
