@@ -28,7 +28,7 @@ from gi.repository import Gtk, Gdk, GdkPixbuf, GObject, Pango, GLib
 
 ## Global logger
 log = logging.getLogger(__name__)
-log.setLevel(logging.DEBUG)
+log.setLevel(logging.INFO)
 formatter = logging.Formatter("%(asctime)s %(levelname)s %(threadName)s(%(thread)d)::%(funcName)s(%(lineno)d): %(message)s")
 handler = logging.StreamHandler(sys.stdout)
 handler.setFormatter(formatter)
@@ -433,7 +433,7 @@ class MPCFront(Gtk.Window):
 
         ## mainpaned is the toplevel layout container
         self.mainpaned = Gtk.VPaned()
-        #self.mainpaned.set_wide_handle(True)
+        self.mainpaned.set_name("mainpaned")
         self.add(self.mainpaned)
 
         ## Setup browser columns
@@ -457,9 +457,11 @@ class MPCFront(Gtk.Window):
 
         ## Setup playlist
         self.playlist_list = Gtk.ListBox()
+        self.playlist_list.set_name("playlistbox")
         #self.playlist_list.set_hexpand(True)
         #self.playlist_list.set_vexpand(True)
         self.playlist_scroll = Gtk.ScrolledWindow()
+        self.playlist_scroll.set_name("playlistscroll")
         self.playlist_scroll.set_hexpand(True)
         self.playlist_scroll.add(self.playlist_list)
         self.bottompaned.add2(self.playlist_scroll)
@@ -484,7 +486,6 @@ class MPCFront(Gtk.Window):
         self.spawn_idle_thread()
         self.playback_timeout_id = GObject.timeout_add(self.sleep_play, self.playback_timeout)
 
-        #self.set_resizable(True)
         self.present()
         self.grab_focus()
 
@@ -929,7 +930,9 @@ class MPCFront(Gtk.Window):
                 if songs:
                     for s in songs:
                         #log.debug(s)
-                        track = re.sub(r'/.*', '',  s['track'])
+                        track = ""
+                        if 'track' in s:
+                            track = re.sub(r'/.*', '',  s['track'])
                         rows.append({ 'type': 'song', 'value': track+" "+ s['title'], 'data': s })
                 self.browser_box.set_column_data(listbox.index+1, rows)
                 #self.browser_box.columns[listbox.index+1].set_sort_func(listbox_cmp_by_track, None, False)
@@ -1160,7 +1163,7 @@ class MPCFront(Gtk.Window):
                 pixbuf = self.current_albumart_pixbuf.scale_simple(image_height, image_height, GdkPixbuf.InterpType.BILINEAR)
                 self.current_albumart.set_from_pixbuf(pixbuf)
             else:
-                log.info("could not get pixbuf")
+                log.debug("could not get pixbuf, clearing album art")
                 self.current_albumart.clear()
         self.last_audiofile = audiofile
 
@@ -1359,7 +1362,8 @@ class MPCFront(Gtk.Window):
         if self.focus_on == "playlist" and self.playlist_list.get_row_at_index(self.playlist_last_selected):
             self.playlist_list.get_row_at_index(self.playlist_last_selected).grab_focus()
 
-        self.playlist_list.get_row_at_index(int(self.mpd_currentsong['pos'])).set_name("current")
+        if 'pos' in self.mpd_currentsong:
+            self.playlist_list.get_row_at_index(int(self.mpd_currentsong['pos'])).set_name("current")
         self.playlist_list.show_all()
 
 
@@ -2065,8 +2069,12 @@ class MPCFront(Gtk.Window):
 
 if __name__ == "__main__":
     arg_parser = argparse.ArgumentParser(description="MPD Frontend", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    arg_parser.add_argument("-v", "--verbose", action='store_true', help="Turn on verbose output.")
     arg_parser.add_argument("-c", "--config", default=default_config_file, action='store', help="Config file.")
     args = arg_parser.parse_args()
+
+    if args.verbose:
+        log.setLevel(logging.DEBUG)
 
     config = configparser.ConfigParser()
     config.read(args.config)

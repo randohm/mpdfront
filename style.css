@@ -6,83 +6,83 @@
     border-right-color: black;
 }
 
-window {
+window, GtkWindow, Window {
     background: linear-gradient(lightgray, #404040);
     color: white;
     font-size: 18pt;
     font-family: Verdana;
 }
 
-box {
+box, GtkBox {
     padding: 5px 5px 5px 5px;
 }
 
-grid#playback-pane label {
+grid#playback-pane label, GtkGrid#playback-pane GtkLabel {
     padding: 0px 8px 8px 8px;
 }
 
-grid#playback-pane image{
+grid#playback-pane image, GtkGrid#playback-pane GtkImage {
     padding: 0px 0px 0px 0px;
 }
 
-scrolledwindow {
+scrolledwindow, GtkScrolledWindow {
     padding: 7px 7px 7px 7px;
 }
 
-label#current-title {
+#current-title {
     font-size: 36pt;
     font-weight: bold;
     text-shadow: -2px -2px 2px black, 2px -2px 2px black, -2px 2px 2px black, 2px 2px 2px black;
 }
 
-label#current-artist {
+#current-artist {
     font-size: 28pt;
     font-weight: bold;
     text-shadow: -2px -2px 2px black, 2px -2px 2px black, -2px 2px 2px black, 2px 2px 2px black;
 }
 
-label#current-album {
+#current-album {
     font-size: 24pt;
     text-shadow: -2px -2px 2px black, 2px -2px 2px black, -2px 2px 2px black, 2px 2px 2px black;
 }
 
-label#current-time, label#end-time {
+#current-time {
     font-size: 14pt;
 }
 
-button, button * {
+button, button *, GtkButton, GtkButton * {
     background: black;
     color: white;
 }
-button:active, button:active * {
+button:active, button:active *, GtkButton:active, GtkButton:active * {
     color: black;
     background: white;
 }
 
-button:focus, button:focus * {
+button:focus, button:focus *, Gtkutton:focus, GtkButton:focus * {
     color: black;
     background: lightgray;
 }
 
-dialog, messagedialog {
+dialog, messagedialog, Dialog, MessageDialog {
     background-color: #b0b0b0;
     color: #000000;
     font: 16pt arial;
 }
 
-#progressbar block.filled {
+#progressbar block.filled, #progressbar Block.filled {
     background-color: #707090;
 }
 #progressbar * {
     background-color: #d5e5e5;
 }
 
-scrolledwindow *#current, scrolledwindow * *#current {
+#current {
     background-color: #404040;
     color: #f0f080;
 }
 
-scrolledwindow *:selected, scrolledwindow *:selected * {
+scrolledwindow *:selected, scrolledwindow *:selected *, GtkScrolledWindow *:selected, GtkScrolledWindow *:selected * {
     background-color: #505065;
     color: #d5e5e5;
 }

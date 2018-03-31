@@ -1,5 +1,5 @@
 # mpdfront
-MPD front end, with the goal of being able to use a keyboard for complete control.
+MPD front end written in Python, with the goal of being able to use a keyboard for complete control.
 Using all keys will more easily translate to use with a remote control.
 The idea is that this will be the head on headless MPD in a home theater setup where the user can see the information up on the big screen.
 

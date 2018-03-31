@@ -15,6 +15,7 @@
 - set/change sound card/device in app
 - write default config file
 - on delete, fetch status, current song
+- change theme/css in runtime
 
 ## MAYBE
 
