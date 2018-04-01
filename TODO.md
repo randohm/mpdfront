@@ -1,7 +1,6 @@
 # TODO
 
 - grab focus by correct pane
-- focus on playlist after position change
 - `db_cache` for files
 - use status['elapsed']
 - turn off timeout on update
@@ -11,11 +10,10 @@
 - info pop error on no data
 - song counter finish and start over (DSD only??)
 - playback layout class
-- on stopped state, empty plqylist, reset playback display
-- set/change sound card/device in app
+- on stopped state, empty playlist, reset playback display
 - write default config file
-- on delete, fetch status, current song
 - change theme/css in runtime
+- add spinner when loading column data
 
 ## MAYBE
 
@@ -24,6 +22,8 @@
 
 ## DONE
 
++ set/change sound card/device in app
++ focus on playlist after position change
 + redo playback layout
 + album covers not stored to temp file
 + highlight playlist current song
