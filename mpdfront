@@ -426,7 +426,7 @@ class MPCFront(Gtk.Window):
     cards_dialog = None
 
 
-    def __init__(self, config):
+    def __init__(self, config, host=None, port=None, music_dir=None, css_file=None, width=None, height=None, card_id=None, device_id=None):
         """
         MPCFront constructor. Connects to MPD. Create main window and contained components.
 
@@ -440,14 +440,37 @@ class MPCFront(Gtk.Window):
         Gdk.threads_enter()
 
         self.set_decorated(False)
-        self.set_size_request(int(config.get("main", "width")), int(config.get("main", "height")))
-
         self.config = config
-        self.mpd_host = self.config.get("main", "host")
-        self.mpd_port = int(self.config.get("main", "port"))
-        self.music_root_dir = self.config.get("main", "music_dir")
-        self.card_id = int(self.config.get("main", "sound_card"))
-        self.device_id = int(self.config.get("main", "sound_device"))
+
+        if width and height:
+            self.set_size_request(width, height)
+        else:
+            self.set_size_request(int(config.get("main", "width")), int(config.get("main", "height")))
+
+        if host:
+            self.mpd_host = host
+        else:
+            self.mpd_host = self.config.get("main", "host")
+
+        if port:
+            self.mpd_port = port
+        else:
+            self.mpd_port = int(self.config.get("main", "port"))
+
+        if music_dir:
+            self.music_root_dir = music_dir
+        else:
+            self.music_root_dir = self.config.get("main", "music_dir")
+
+        if card_id:
+            self.card_id = card_id
+        else:
+            self.card_id = int(self.config.get("main", "sound_card"))
+
+        if device_id:
+            self.device_id = device_id
+        else:
+            self.device_id = int(self.config.get("main", "sound_device"))
 
         if not self.mpd_connect():
             log.fatal("Could not connect to MPD")
@@ -1281,7 +1304,11 @@ class MPCFront(Gtk.Window):
         ## Get stream rates, format
         freq = bits = bitrate = chs = ""
         if 'audio' in self.mpd_status.keys():
-            freq, bits, chs = re.split(r':', self.mpd_status['audio'], 2)
+            if re.match(r'dsd\d+:', self.mpd_status['audio']):
+                bits = "dsd"
+                freq, chs = re.split(r':', self.mpd_status['audio'], 1)
+            else:
+                freq, bits, chs = re.split(r':', self.mpd_status['audio'], 2)
         if 'bitrate' in self.mpd_status.keys():
             bitrate = self.mpd_status['bitrate']
 
@@ -1289,7 +1316,10 @@ class MPCFront(Gtk.Window):
         format_text = dac_text = ""
         if freq and bits and chs and bitrate:
             if bits == "dsd":
-                format_text = "%2.1f MHz DSD" % (float(bitrate)/1000)
+                if re.match(r'dsd', freq):
+                    format_text = freq
+                else:
+                    format_text = "%2.1f MHz DSD" % (float(bitrate)/1000)
             elif bits == "f":
                 format_text = "%3.1f kHz float PCM" % (float(freq)/1000)
             else:
@@ -1320,7 +1350,7 @@ class MPCFront(Gtk.Window):
                     num_bits = 0
                     if dac_bits in ("S32_LE"):
                         num_bits = 32
-                    elif dac_bits in ("S24_LE"):
+                    elif dac_bits in ("S24_LE", "S24_3LE"):
                         num_bits = 24
                     elif dac_bits in ("S16_LE"):
                         num_bits = 16
@@ -2136,6 +2166,14 @@ class MPCFront(Gtk.Window):
 if __name__ == "__main__":
     arg_parser = argparse.ArgumentParser(description="MPD Frontend", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     arg_parser.add_argument("-v", "--verbose", action='store_true', help="Turn on verbose output.")
+    arg_parser.add_argument("-H", "--host", action='store', help="Remote host name or IP address.")
+    arg_parser.add_argument("-p", "--port", type=int, action='store', help="Remote TCP port number.")
+    arg_parser.add_argument("-C", "--css", action='store', help="CSS file for the Gtk App.")
+    arg_parser.add_argument("-d", "--dir", action='store', help="Root music directory.")
+    arg_parser.add_argument("-x", "--width", type=int, action='store', help="Width of window.")
+    arg_parser.add_argument("-y", "--height", type=int, action='store', help="Height of the window.")
+    arg_parser.add_argument("-s", "--card", type=int, action='store', help="ID of the sound device.")
+    arg_parser.add_argument("-t", "--dev", type=int, action='store', help="ID of the playback device on the sound device.")
     arg_parser.add_argument("-c", "--config", default=default_config_file, action='store', help="Config file.")
     args = arg_parser.parse_args()
 
@@ -2144,18 +2182,12 @@ if __name__ == "__main__":
 
     config = configparser.ConfigParser()
     config.read(args.config)
-    window = MPCFront(config)
+    window = MPCFront(config, width=args.width, height=args.height, css_file=args.css, host=args.host, port=args.port, music_dir=args.dir)
     """
     try:
-        if args.config:
-            config = configparser.ConfigParser()
-            config.read(args.config)
-            #log.debug("config: %s" % config.sections())
-            window = MPCFront(config)
-        else:
-            #window = MPCFront(None, args.host, args.port, args.dir, args.css, args.width, args.height, args.card, args.dev)
-            print("Config file (-c) is a required argument.")
-            sys.exit(1)
+        config = configparser.ConfigParser()
+        config.read(args.config)
+        window = MPCFront(config, width=args.width, height=args.height, css_file=args.css, host=args.host, port=args.port, music_dir=args.dir)
     except Exception as e:
         log.fatal("Application failed: %s" % e)
         sys.exit(1)
