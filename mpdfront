@@ -4,7 +4,7 @@
 Music Player Daemon Frontend. Adds a head to headless MPD.
 """
 
-import sys, re, time, os, cgi, io
+import sys, re, time, os, html, io
 import argparse
 import logging
 import threading
@@ -52,7 +52,7 @@ default_css_file = "style.css"
 default_root_dir = "/"
 default_card_id = 0
 default_device_id = 0
-default_config_file = os.environ['HOME']+"/.mpdfront.cfg"
+default_config_file = os.environ['HOME']+"/.mpdfront/config"
 
 
 
@@ -169,14 +169,14 @@ class CardSelectDialog(Gtk.Dialog):
         card_id_button.set_name("card_id")
         card_id_button.set_numeric(True)
         card_id_button.set_value(parent.card_id)
-        card_id_label = Gtk.Label("Card ID")
+        card_id_label = Gtk.Label(label = "Card ID")
         card_id_button.connect("value-changed", button_pressed_callback, "card_id")
 
         device_id_button = Gtk.SpinButton.new_with_range(0, 4, 1)
         device_id_button.set_name("device_id")
         device_id_button.set_numeric(True)
         device_id_button.set_value(parent.device_id)
-        device_id_label = Gtk.Label("Device ID")
+        device_id_label = Gtk.Label(label = "Device ID")
         device_id_button.connect("value-changed", button_pressed_callback, "device_id")
 
         hbox1 = Gtk.HBox()
@@ -370,7 +370,7 @@ class ColumnBrowser(Gtk.Box):
 
         for i in data:
             #log.debug("data: %s" % i)
-            label = MetadataLabel(i['value'])
+            label = MetadataLabel(label = i['value'])
             label.set_metatype(i['type'])
             label.set_metadata(i['data'])
             label.set_halign(Gtk.Align.START)
@@ -444,9 +444,9 @@ class MPCFront(Gtk.Window):
             device_id: optional. device ID on the sound card
         """
         Gtk.Window.__init__(self, title="MPD - %s:%s" % (config.get("main", "host"), config.get("main", "port")))
-        GObject.threads_init()
-        Gdk.threads_init()
-        Gdk.threads_enter()
+        #GObject.threads_init()
+        #Gdk.threads_init()
+        #Gdk.threads_enter()
 
         self.set_decorated(False)
         self.config = config
@@ -593,34 +593,34 @@ class MPCFront(Gtk.Window):
         self.playback_info_box = Gtk.VBox()
         self.playback_grid.attach(self.playback_info_box, 0, 0, 1, 1)
 
-        self.current_title_label = Gtk.Label(" ")
+        self.current_title_label = Gtk.Label(label = " ")
         self.current_title_label.set_name("current-title")
         self.current_title_label.set_ellipsize(Pango.EllipsizeMode.END)
         self.current_title_label.set_halign(Gtk.Align.START)
         self.current_title_label.set_valign(Gtk.Align.START)
         #self.current_title_label.set_line_wrap(True)
         self.current_title_label.set_hexpand(True)
-        self.current_artist_label = Gtk.Label(" ")
+        self.current_artist_label = Gtk.Label(label = " ")
         self.current_artist_label.set_name("current-artist")
         self.current_artist_label.set_halign(Gtk.Align.START)
         self.current_artist_label.set_valign(Gtk.Align.START)
         self.current_artist_label.set_ellipsize(Pango.EllipsizeMode.END)
         #self.current_artist_label.set_line_wrap(True)
-        self.current_album_label = Gtk.Label(" ")
+        self.current_album_label = Gtk.Label(label = " ")
         self.current_album_label.set_name("current-album")
         self.current_album_label.set_halign(Gtk.Align.START)
         self.current_album_label.set_valign(Gtk.Align.START)
         self.current_album_label.set_ellipsize(Pango.EllipsizeMode.END)
         #self.current_album_label.set_line_wrap(True)
-        self.stats1_label = Gtk.Label(" ")
+        self.stats1_label = Gtk.Label(label = " ")
         self.stats1_label.set_name("stats1")
         self.stats1_label.set_halign(Gtk.Align.START)
         self.stats1_label.set_valign(Gtk.Align.END)
-        self.stats2_label = Gtk.Label(" ")
+        self.stats2_label = Gtk.Label(label = " ")
         self.stats2_label.set_name("stats2")
         self.stats2_label.set_halign(Gtk.Align.START)
         self.stats2_label.set_valign(Gtk.Align.END)
-        self.current_time_label = Gtk.Label(" ")
+        self.current_time_label = Gtk.Label(label = " ")
         self.current_time_label.set_name("current-time")
         self.current_time_label.set_halign(Gtk.Align.START)
         self.current_time_label.set_valign(Gtk.Align.END)
@@ -636,12 +636,12 @@ class MPCFront(Gtk.Window):
         ## Setup playback button box
         self.playback_button_box = Gtk.Box()
         self.playback_grid.attach(self.playback_button_box,  0, 3, 2, 1)
-        self.previous_button = Gtk.Button(symbol_previous)
-        self.rewind_button = Gtk.Button(symbol_rewind)
-        self.stop_button = Gtk.Button(symbol_stop)
-        self.play_button = Gtk.Button(symbol_play)
-        self.cue_button = Gtk.Button(symbol_cue)
-        self.next_button = Gtk.Button(symbol_next)
+        self.previous_button = Gtk.Button(label = symbol_previous)
+        self.rewind_button = Gtk.Button(label = symbol_rewind)
+        self.stop_button = Gtk.Button(label = symbol_stop)
+        self.play_button = Gtk.Button(label = symbol_play)
+        self.cue_button = Gtk.Button(label = symbol_cue)
+        self.next_button = Gtk.Button(label = symbol_next)
         self.playback_button_box.pack_start(self.previous_button, True, True, 3)
         self.playback_button_box.pack_start(self.rewind_button, True, True, 3)
         self.playback_button_box.pack_start(self.stop_button, True, True, 3)
@@ -1473,7 +1473,7 @@ class MPCFront(Gtk.Window):
         for song in playlist:
             label_text = ""
             if 'track' in song and 'time' in song and 'title' in song:
-                label_text = re.sub(r'/.*', '', cgi.escape(song['track']))+" ("+cgi.escape(pp_time(song['time']))+") <b>"+cgi.escape(song['title'])+"</b>"
+                label_text = re.sub(r'/.*', '', html.escape(song['track']))+" ("+html.escape(pp_time(song['time']))+") <b>"+html.escape(song['title'])+"</b>"
             else:
                 label_text = os.path.basename(song['file'])
             label = MetadataLabel()
@@ -1971,7 +1971,7 @@ class MPCFront(Gtk.Window):
                 add_item_name += selected_items[i]['value']+" "
 
         self.playlist_confirm_dialog = Gtk.Dialog("Update playlist?", self, Gtk.DialogFlags.MODAL, ("Add", 1, "Replace", 2, "Cancel", -4))
-        self.playlist_confirm_dialog.get_content_area().add(Gtk.Label("Selected: "+add_item_name))
+        self.playlist_confirm_dialog.get_content_area().add(Gtk.Label(label = "Selected: "+add_item_name))
         self.playlist_confirm_dialog.get_content_area().set_size_request(300, 100)
         style_context = self.playlist_confirm_dialog.get_style_context()
         style_context.add_provider(self.css, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
@@ -2019,9 +2019,9 @@ class MPCFront(Gtk.Window):
 
         self.edit_playlist_dialog = Gtk.Dialog("Edit playlist", self, Gtk.DialogFlags.MODAL, ("Play", 4, "Up", 1, "Down", 2, "Delete", 3, "Cancel", -4))
         if 'title' in song:
-            self.edit_playlist_dialog.get_content_area().add(Gtk.Label("Edit: "+song['title']))
+            self.edit_playlist_dialog.get_content_area().add(Gtk.Label(label = "Edit: "+song['title']))
         else:
-            self.edit_playlist_dialog.get_content_area().add(Gtk.Label("Edit: "+song['file']))
+            self.edit_playlist_dialog.get_content_area().add(Gtk.Label(label = "Edit: "+song['file']))
         self.edit_playlist_dialog.get_content_area().set_size_request(300, 100)
         style_context = self.edit_playlist_dialog.get_style_context()
         style_context.add_provider(self.css, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
