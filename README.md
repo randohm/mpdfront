@@ -35,9 +35,9 @@ MPD Frontend
 optional arguments:
   -h, --help            show this help message and exit
   -c CONFIG, --config CONFIG
-                        Config file. (default: ~/.mpdfront.cfg)
+                        Config file. (default: ~/.mpdfront/config)
 ```
-A config file is required, whether it is passed as an argument or in the default location: ```~/.mpdfront.cfg```.
+A config file is required, whether it is passed as an argument or in the default location: ```~/.mpdfront/config```.
 The config file is in ini format.
 
 ### Config File Sample
@@ -59,15 +59,16 @@ api_secret=
 save_cover=no
 
 [keys]
-playpause=]
-stop=[
-cue='
-rewind=;
-next=/
-previous=.
-info=\
-outputs=,
-options=-
+playpause=p
+stop=u
+cue=l
+rewind=k
+next=o
+previous=i
+info=w
+outputs=e
+options=r
+cardselect=t
 browser=1
 playlist=2
 full_browser=3
