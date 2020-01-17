@@ -54,6 +54,13 @@ default_card_id = 0
 default_device_id = 0
 default_config_file = os.environ['HOME']+"/.mpdfront/config"
 
+## Key codes
+keyval_play = 0x1008ff14
+keyval_rewind = 0x1008ff3e
+keyval_cue = 0x1008ff97
+keyval_previous = 0x1008ff16
+keyval_next = 0x1008ff17
+
 
 
 def listbox_cmp(row1, row2, data, notify_destroy):
@@ -121,24 +128,24 @@ class SongInfoDialog(Gtk.MessageDialog):
         Gtk.MessageDialog.__init__(self, parent, Gtk.DialogFlags.MODAL, Gtk.MessageType.INFO, Gtk.ButtonsType.OK)
         song_text = ""
         if 'title' in song:
-            song_text += "<span weight='ultrabold' size='xx-large'>%s</span>\n" % cgi.escape(song['title'])
+            song_text += "<span weight='ultrabold' size='xx-large'>%s</span>\n" % html.escape(song['title'])
         if 'artist' in song:
-            song_text += "Artist: <span weight='bold' size='x-large'>%s</span>\n" % cgi.escape(song['artist'])
+            song_text += "Artist: <span weight='bold' size='x-large'>%s</span>\n" % html.escape(song['artist'])
         if 'album' in song:
-            song_text += "Album: <span weight='bold' size='large'>%s</span>\n" % cgi.escape(song['album'])
+            song_text += "Album: <span weight='bold' size='large'>%s</span>\n" % html.escape(song['album'])
         if 'time' in song:
-            song_text += "Time: %s\n" % cgi.escape(pp_time(song['time']))
+            song_text += "Time: %s\n" % html.escape(pp_time(song['time']))
         if 'track' in song:
-            song_text += "Track: %s\n" % cgi.escape(song['track'])
+            song_text += "Track: %s\n" % html.escape(song['track'])
         if 'date' in song:
-            song_text += "Date: %s\n" % cgi.escape(song['date'])
+            song_text += "Date: %s\n" % html.escape(song['date'])
         if 'genre' in song:
-            song_text += "Genre: %s\n" % cgi.escape(song['genre'])
+            song_text += "Genre: %s\n" % html.escape(song['genre'])
 
         if song_text == "":
-            song_text = "File: %s" % cgi.escape(song['file'])
+            song_text = "File: %s" % html.escape(song['file'])
         else:
-            song_text += "File: <small>%s</small>" % cgi.escape(song['file'])
+            song_text += "File: <small>%s</small>" % html.escape(song['file'])
 
         self.set_name("song-info")
         self.set_markup(song_text)
@@ -562,7 +569,7 @@ class MPCFront(Gtk.Window):
         self.update_playlist()
 
         self.spawn_idle_thread()
-        self.playback_timeout_id = GObject.timeout_add(self.sleep_play, self.playback_timeout)
+        self.playback_timeout_id = GLib.timeout_add(self.sleep_play, self.playback_timeout)
 
         self.present()
         self.grab_focus()
@@ -695,25 +702,26 @@ class MPCFront(Gtk.Window):
 
         error = False
         try:
+            log.debug("Key pressed: %x" % event.keyval)
             if (ctrl or mod2) and event.keyval in (ord('q'), ord('Q')):
                 Gtk.main_quit()
-            elif event.keyval == ord(self.config.get("keys", "playpause")):
-                #log.debug("PLAY/PAUSE")
+            elif event.keyval == keyval_play or event.keyval == ord(self.config.get("keys", "playpause")):
+                log.debug("PLAY/PAUSE")
                 self.play_or_pause()
             elif event.keyval == ord(self.config.get("keys", "stop")):
-                #log.debug("STOP")
+                log.debug("STOP")
                 self.mpd.stop()
-            elif event.keyval == ord(self.config.get("keys", "previous")):
-                #log.debug("PREVIOUS")
+            elif event.keyval == keyval_previous or event.keyval == ord(self.config.get("keys", "previous")):
+                log.debug("PREVIOUS")
                 self.mpd.previous()
-            elif event.keyval == ord(self.config.get("keys", "next")):
-                #log.debug("NEXT")
+            elif event.keyval == keyval_next or event.keyval == ord(self.config.get("keys", "next")):
+                log.debug("NEXT")
                 self.mpd.next()
-            elif event.keyval == ord(self.config.get("keys", "rewind")):
-                #log.debug("REWIND")
+            elif event.keyval == keyval_rewind or event.keyval == ord(self.config.get("keys", "rewind")):
+                log.debug("REWIND")
                 self.mpd.seekcur("-5")
-            elif event.keyval == ord(self.config.get("keys", "cue")):
-                #log.debug("CUE")
+            elif event.keyval == keyval_cue or event.keyval == ord(self.config.get("keys", "cue")):
+                log.debug("CUE")
                 self.mpd.seekcur("+5")
 
             elif event.keyval == ord(self.config.get("keys", "outputs")):
@@ -840,7 +848,6 @@ class MPCFront(Gtk.Window):
         """
         Click handler for previous button
         """
-        #log.debug("PREVIOUS")
         error = False
         try:
             self.mpd.previous()
@@ -855,7 +862,6 @@ class MPCFront(Gtk.Window):
         """
         Click handler for rewind button
         """
-        #log.debug("REWIND")
         error = False
         try:
             self.mpd.seekcur("-5")
@@ -870,7 +876,6 @@ class MPCFront(Gtk.Window):
         """
         Click handler for stop button
         """
-        #log.debug("STOP")
         error = False
         try:
             self.mpd.stop()
@@ -891,7 +896,6 @@ class MPCFront(Gtk.Window):
         """
         Click handler for cue button
         """
-        #log.debug("CUE")
         error = False
         try:
             self.mpd.seekcur("+5")
@@ -906,7 +910,6 @@ class MPCFront(Gtk.Window):
         """
         Click handler for next button
         """
-        #log.debug("NEXT")
         error = False
         try:
             self.mpd.next()
@@ -1092,7 +1095,6 @@ class MPCFront(Gtk.Window):
         """
         error = False
         if self.mpd_status['state'] == "stop":
-            #log.debug("PLAY")
             try:
                 self.mpd.play()
             except (musicpd.ConnectionError, BrokenPipeError) as e:
@@ -1102,7 +1104,6 @@ class MPCFront(Gtk.Window):
                 self.mpd_connect()
                 self.mpd.play()
         else:
-            #log.debug("PAUSE")
             try:
                 self.mpd.pause()
             except (musicpd.ConnectionError, BrokenPipeError) as e:
@@ -1540,7 +1541,7 @@ class MPCFront(Gtk.Window):
                 else:
                     log.info("Unhandled change: %s" % c)
             #GObject.source_remove(self.playback_timeout_id)
-            GObject.timeout_add(0, self.playback_timeout, True)
+            GLib.timeout_add(0, self.playback_timeout, True)
             
 
 
@@ -2111,7 +2112,7 @@ class MPCFront(Gtk.Window):
                 log.info("unknown state: %s" % self.mpd_status['state'])
 
         if not oneshot:
-            self.playback_timeout_id = GObject.timeout_add(timeout, self.playback_timeout)
+            self.playback_timeout_id = GLib.timeout_add(timeout, self.playback_timeout)
 
 
 
