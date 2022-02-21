@@ -60,6 +60,7 @@ keyval_rewind = 0x1008ff3e
 keyval_cue = 0x1008ff97
 keyval_previous = 0x1008ff16
 keyval_next = 0x1008ff17
+keyval_stop = 0x1008ff15
 
 
 
@@ -708,7 +709,7 @@ class MPCFront(Gtk.Window):
             elif event.keyval == keyval_play or event.keyval == ord(self.config.get("keys", "playpause")):
                 log.debug("PLAY/PAUSE")
                 self.play_or_pause()
-            elif event.keyval == ord(self.config.get("keys", "stop")):
+            elif event.keyval == keyval_stop or event.keyval == ord(self.config.get("keys", "stop")):
                 log.debug("STOP")
                 self.mpd.stop()
             elif event.keyval == keyval_previous or event.keyval == ord(self.config.get("keys", "previous")):
