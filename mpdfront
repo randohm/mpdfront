@@ -62,7 +62,7 @@ class Constants:
     ## symbols for playback control button labels
     symbol_previous = chr(9612) + chr(9664)
     symbol_rewind = chr(9664) + chr(9664)
-    symbol_stop = chr(9608)
+    symbol_stop = " " + chr(9608) + " "
     symbol_play = chr(9613) + chr(9654)
     symbol_pause = chr(9613) + chr(9613)
     symbol_cue = chr(9654) + chr(9654)
@@ -185,6 +185,7 @@ class CardSelectDialog(Gtk.Dialog):
         """
         self.log = Defaults.get_logger()
         super().__init__(title="Select Sound Card", parent=parent, *args, **kwargs)
+        self.set_transient_for(parent)
         self.set_modal(True)
         self.add_button("Close", 0)
         self.set_name("cardselect-dialog")
@@ -193,28 +194,33 @@ class CardSelectDialog(Gtk.Dialog):
         card_id_button = Gtk.SpinButton.new_with_range(0, 4, 1)
         card_id_button.set_name("card_id")
         card_id_button.set_numeric(True)
-        card_id_button.set_value(parent.card_id)
+        card_id_button.set_value(parent.app.card_id)
         card_id_label = Gtk.Label(label="Card ID")
         card_id_button.connect("value-changed", button_pressed_callback, "card_id")
 
         device_id_button = Gtk.SpinButton.new_with_range(0, 4, 1)
         device_id_button.set_name("device_id")
         device_id_button.set_numeric(True)
-        device_id_button.set_value(parent.device_id)
+        device_id_button.set_value(parent.app.device_id)
         device_id_label = Gtk.Label(label="Device ID")
         device_id_button.connect("value-changed", button_pressed_callback, "device_id")
 
-        hbox1 = Gtk.HBox()
-        hbox1.pack_start(card_id_label, True, False, 0)
-        hbox1.pack_start(card_id_button, False, False, 0)
-        hbox2 = Gtk.HBox()
-        hbox2.pack_start(device_id_label, True, False, 0)
-        hbox2.pack_start(device_id_button, False, False, 0)
-        vbox = Gtk.VBox()
-        vbox.pack_start(hbox1, False, False, 0)
-        vbox.pack_start(hbox2, False, False, 0)
-        self.get_content_area().add(vbox)
-        self.show_all()
+        hbox1 = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
+        hbox1.append(card_id_label)
+        hbox1.append(card_id_button)
+        hbox2 = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
+        hbox2.append(device_id_label)
+        hbox2.append(device_id_button)
+        vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        vbox.append(hbox1)
+        vbox.append(hbox2)
+        self.get_content_area().append(vbox)
+
+        self.connect('response', self.on_response)
+        self.show()
+
+    def on_response(self, dialog, response):
+        self.destroy()
 
 class OutputsDialog(Gtk.Dialog):
     """
@@ -240,8 +246,12 @@ class OutputsDialog(Gtk.Dialog):
             button = Gtk.CheckButton.new_with_label(o['outputname'])
             button.set_active(int(o['outputenabled']))
             self.get_content_area().append(button)
-            button.connect("clicked", button_pressed_callback, o['outputid'])
-        self.show_all()
+            button.connect("toggled", button_pressed_callback, o['outputid'])
+        self.connect('response', self.on_response)
+        self.show()
+
+    def on_response(self, dialog, response):
+        self.destroy()
 
 class OptionsDialog(Gtk.Dialog):
     """
@@ -263,25 +273,29 @@ class OptionsDialog(Gtk.Dialog):
 
         self.consume_button = Gtk.CheckButton.new_with_label("Consume")
         self.consume_button.set_active(int(parent.mpd_status['consume']))
-        self.consume_button.connect("clicked", button_pressed_callback, "consume")
-        self.get_content_area().add(self.consume_button)
+        self.consume_button.connect("toggled", button_pressed_callback, "consume")
+        self.get_content_area().append(self.consume_button)
 
         self.shuffle_button = Gtk.CheckButton.new_with_label("Shuffle")
         self.shuffle_button.set_active(int(parent.mpd_status['random']))
-        self.shuffle_button.connect("clicked", button_pressed_callback, "random")
-        self.get_content_area().add(self.shuffle_button)
+        self.shuffle_button.connect("toggled", button_pressed_callback, "random")
+        self.get_content_area().append(self.shuffle_button)
 
         self.repeat_button = Gtk.CheckButton.new_with_label("Repeat")
         self.repeat_button.set_active(int(parent.mpd_status['repeat']))
-        self.repeat_button.connect("clicked", button_pressed_callback, "repeat")
-        self.get_content_area().add(self.repeat_button)
+        self.repeat_button.connect("toggled", button_pressed_callback, "repeat")
+        self.get_content_area().append(self.repeat_button)
 
         self.single_button = Gtk.CheckButton.new_with_label("Single")
         self.single_button.set_active(int(parent.mpd_status['single']))
-        self.single_button.connect("clicked", button_pressed_callback, "single")
-        self.get_content_area().add(self.single_button)
+        self.single_button.connect("toggled", button_pressed_callback, "single")
+        self.get_content_area().append(self.single_button)
 
-        self.show_all()
+        self.connect('response', self.on_response)
+        self.show()
+
+    def on_response(self, dialog, response):
+        self.destroy()
 
 class PlaylistConfirmDialog(Gtk.Dialog):
     """
@@ -298,7 +312,7 @@ class PlaylistConfirmDialog(Gtk.Dialog):
         #style_context = self.get_style_context()
         #style_context.add_provider(self.css, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
         self.connect('response', parent.playlist_dialog_response)
-        self.present()
+        self.show()
 
 class MetadataLabel(Gtk.Label):
     """
@@ -447,8 +461,6 @@ class MPDFrontWindow(Gtk.ApplicationWindow):
         self.mainpaned = Gtk.Paned(orientation=Gtk.Orientation.VERTICAL)
         self.mainpaned.set_name("mainpaned")
         #self.mainpaned.set_position(int(config.get("main", "height"))/2)
-        self.connect("state_flags_changed", self.on_state_flags_changed)
-
         self.set_child(self.mainpaned)
 
         ## Setup browser columns
@@ -476,6 +488,7 @@ class MPDFrontWindow(Gtk.ApplicationWindow):
 
         ## Set event handlers
         self.connect("destroy", self.close)
+        self.connect("state_flags_changed", self.on_state_flags_changed)
         #self.connect("check-resize", self.window_resized)
         self.previous_button.connect("clicked", self.previous_clicked)
         self.rewind_button.connect("clicked", self.rewind_clicked)
@@ -484,6 +497,9 @@ class MPDFrontWindow(Gtk.ApplicationWindow):
         self.cue_button.connect("clicked", self.cue_clicked)
         self.next_button.connect("clicked", self.next_clicked)
         #self.playlist_list.connect("key-pressed", self.playlist_key_pressed)
+        playlist_list_controller = Gtk.EventControllerKey.new()
+        playlist_list_controller.connect("key-pressed", self.playlist_key_pressed)
+        self.playlist_list.add_controller(playlist_list_controller)
 
         self.update_playback()
         self.update_playlist()
@@ -518,48 +534,57 @@ class MPDFrontWindow(Gtk.ApplicationWindow):
         self.current_title_label.set_ellipsize(Pango.EllipsizeMode.END)
         self.current_title_label.set_halign(Gtk.Align.START)
         self.current_title_label.set_valign(Gtk.Align.START)
-        #self.current_title_label.set_line_wrap(True)
-        self.current_title_label.set_hexpand(True)
+        self.current_title_label.set_wrap(True)
+        self.current_title_label.set_hexpand(False)
 
         self.current_artist_label = Gtk.Label(label=" ")
         self.current_artist_label.set_name("current-artist")
         self.current_artist_label.set_halign(Gtk.Align.START)
         self.current_artist_label.set_valign(Gtk.Align.START)
         self.current_artist_label.set_ellipsize(Pango.EllipsizeMode.END)
-        #self.current_artist_label.set_line_wrap(True)
+        self.current_artist_label.set_wrap(False)
+        self.current_artist_label.set_hexpand(False)
 
         self.current_album_label = Gtk.Label(label=" ")
         self.current_album_label.set_name("current-album")
         self.current_album_label.set_halign(Gtk.Align.START)
         self.current_album_label.set_valign(Gtk.Align.START)
         self.current_album_label.set_ellipsize(Pango.EllipsizeMode.END)
-        #self.current_album_label.set_line_wrap(True)
+        self.current_album_label.set_wrap(False)
+        self.current_album_label.set_hexpand(False)
 
         self.stats1_label = Gtk.Label(label=" ")
         self.stats1_label.set_name("stats1")
         self.stats1_label.set_halign(Gtk.Align.START)
         self.stats1_label.set_valign(Gtk.Align.END)
+        self.stats1_label.set_wrap(True)
+        self.stats1_label.set_hexpand(False)
 
         self.stats2_label = Gtk.Label(label=" ")
         self.stats2_label.set_name("stats2")
         self.stats2_label.set_halign(Gtk.Align.START)
         self.stats2_label.set_valign(Gtk.Align.END)
+        self.stats2_label.set_wrap(True)
+        self.stats2_label.set_hexpand(False)
 
         self.current_time_label = Gtk.Label(label=" ")
         self.current_time_label.set_name("current-time")
         self.current_time_label.set_halign(Gtk.Align.START)
         self.current_time_label.set_valign(Gtk.Align.END)
+        self.current_time_label.set_wrap(True)
+        self.current_time_label.set_hexpand(False)
 
         ## Add labels to playback grid
-        self.playback_info_box.append(self.current_title_label)
-        self.playback_info_box.append(self.current_artist_label)
-        self.playback_info_box.append(self.current_album_label)
+        self.playback_info_box.prepend(self.current_title_label)
+        self.playback_info_box.prepend(self.current_artist_label)
+        self.playback_info_box.prepend(self.current_album_label)
         self.playback_info_box.append(self.current_time_label)
         self.playback_info_box.append(self.stats2_label)
         self.playback_info_box.append(self.stats1_label)
 
         ## Setup playback button box
         self.playback_button_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
+        self.playback_button_box.set_spacing(4)
         self.playback_grid.attach(self.playback_button_box, 0, 3, 2, 1)
         self.previous_button = Gtk.Button(label=Constants.symbol_previous)
         self.rewind_button = Gtk.Button(label=Constants.symbol_rewind)
@@ -567,6 +592,12 @@ class MPDFrontWindow(Gtk.ApplicationWindow):
         self.play_button = Gtk.Button(label=Constants.symbol_play)
         self.cue_button = Gtk.Button(label=Constants.symbol_cue)
         self.next_button = Gtk.Button(label=Constants.symbol_next)
+        self.previous_button.set_hexpand(True)
+        self.rewind_button.set_hexpand(True)
+        self.stop_button.set_hexpand(True)
+        self.play_button.set_hexpand(True)
+        self.cue_button.set_hexpand(True)
+        self.next_button.set_hexpand(True)
         self.playback_button_box.append(self.previous_button)
         self.playback_button_box.append(self.rewind_button)
         self.playback_button_box.append(self.stop_button)
@@ -585,7 +616,7 @@ class MPDFrontWindow(Gtk.ApplicationWindow):
         self.current_albumart = Gtk.Picture()
         self.current_albumart.set_valign(Gtk.Align.START)
         self.current_albumart.set_vexpand(True)
-        #self.current_albumart.set_hexpand(True)
+        self.current_albumart.set_hexpand(True)
         self.playback_grid.attach(self.current_albumart, 1, 0, 1, 1)
 
     ##  BEGIN EVENT HANDLERS
@@ -784,13 +815,13 @@ class MPDFrontWindow(Gtk.ApplicationWindow):
         """
         error = False
         try:
-            self.mpd.previous()
+            self.app.mpd.previous()
         except (musicpd.ConnectionError, BrokenPipeError) as e:
             self.log.info("previous failed: %s" % e)
             error = True
         if error:
-            self.mpd_connect()
-            self.mpd.previous()
+            self.app.mpd_connect()
+            self.app.mpd.previous()
 
     def rewind_clicked(self, button):
         """
@@ -798,13 +829,13 @@ class MPDFrontWindow(Gtk.ApplicationWindow):
         """
         error = False
         try:
-            self.mpd.seekcur("-5")
+            self.app.mpd.seekcur("-5")
         except (musicpd.ConnectionError, BrokenPipeError) as e:
             self.log.info("rewind failed: %s" % e)
             error = True
         if error:
-            self.mpd_connect()
-            self.mpd.seekcur("-5")
+            self.app.mpd_connect()
+            self.app.mpd.seekcur("-5")
 
     def stop_clicked(self, button):
         """
@@ -812,7 +843,7 @@ class MPDFrontWindow(Gtk.ApplicationWindow):
         """
         error = False
         try:
-            self.mpd.stop()
+            self.app.mpd.stop()
         except (musicpd.ConnectionError, BrokenPipeError) as e:
             self.log.info("stop failed: %s" % e)
             error = True
@@ -832,13 +863,13 @@ class MPDFrontWindow(Gtk.ApplicationWindow):
         """
         error = False
         try:
-            self.mpd.seekcur("+5")
+            self.app.mpd.seekcur("+5")
         except (musicpd.ConnectionError, BrokenPipeError) as e:
             self.log.info("cue failed: %s" % e)
             error = True
         if error:
-            self.mpd_connect()
-            self.mpd.seekcur("+5")
+            self.app.mpd_connect()
+            self.app.mpd.seekcur("+5")
 
     def next_clicked(self, button):
         """
@@ -846,13 +877,13 @@ class MPDFrontWindow(Gtk.ApplicationWindow):
         """
         error = False
         try:
-            self.mpd.next()
+            self.app.mpd.next()
         except (musicpd.ConnectionError, BrokenPipeError) as e:
             self.log.info("next failed: %s" % e)
             error = True
         if error:
-            self.mpd_connect()
-            self.mpd.next()
+            self.app.mpd_connect()
+            self.app.mpd.next()
 
     ##  Selected handlers
 
@@ -1267,7 +1298,7 @@ class MPDFrontWindow(Gtk.ApplicationWindow):
         Displays confirmation dialog, presenting options to add, replace or cancel.
         """
         self.browser_selected_items = self.browser_box.get_selected_rows()
-        #log.debug("selected items: %s" % selected_items)
+        #self.log.debug("selected items: %s" % selected_items)
         if not self.browser_selected_items[-1]['type'] in ("album", "song", "file"):
             return
         add_item_name = ""
@@ -1288,30 +1319,20 @@ class MPDFrontWindow(Gtk.ApplicationWindow):
         song = self.playlist_list.get_selected_row().get_child().data
         #log.debug("selected song: %s" % song)
 
-        self.edit_playlist_dialog = Gtk.Dialog("Edit playlist", self)
+        self.edit_playlist_dialog = Gtk.Dialog(title="Edit playlist", parent=self)
+        self.edit_playlist_dialog.set_transient_for(self)
         self.edit_playlist_dialog.set_modal(True)
-        for button_tuple in (("Play", 4), ("Up", 1), ("Down", 2), ("Delete", 3), ("Cancel", -4)):
+        for button_tuple in (("Play", 4), ("Up", 1), ("Down", 2), ("Delete", 3), ("Cancel", 0)):
             self.edit_playlist_dialog.add_button(button_tuple[0], button_tuple[1])
         if 'title' in song:
-            self.edit_playlist_dialog.get_content_area().add(Gtk.Label(label="Edit: " + song['title']))
+            self.edit_playlist_dialog.get_content_area().append(Gtk.Label(label="Edit: " + song['title']))
         else:
-            self.edit_playlist_dialog.get_content_area().add(Gtk.Label(label="Edit: " + song['file']))
+            self.edit_playlist_dialog.get_content_area().append(Gtk.Label(label="Edit: " + song['file']))
         self.edit_playlist_dialog.get_content_area().set_size_request(300, 100)
-        style_context = self.edit_playlist_dialog.get_style_context()
-        style_context.add_provider(self.css, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
-        self.edit_playlist_dialog.show_all();
-        response = self.edit_playlist_dialog.run()
-        self.edit_playlist_dialog.destroy()
-        #log.debug("dialog response: %s" % response)
-
-        if response == 1:
-            self.playlist_moveup()
-        elif response == 2:
-            self.playlist_movedown()
-        elif response == 3:
-            self.playlist_delete()
-        elif response == 4:
-            self.app.mpd.playid(song['id'])
+        #style_context = self.edit_playlist_dialog.get_style_context()
+        #style_context.add_provider(self.css, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+        self.edit_playlist_dialog.connect('response', self.edit_playlist_response)
+        self.edit_playlist_dialog.show();
 
     def playlist_info_popup(self):
         """
@@ -1422,10 +1443,10 @@ class MPDFrontWindow(Gtk.ApplicationWindow):
         self.log.debug("moving song down 1: '%s'" % song['title'])
         if index + 1 < len(self.playlist_list.get_children()):
             try:
-                self.mpd.moveid(song['id'], index + 1)
+                self.app.mpd.moveid(song['id'], index + 1)
             except (musicpd.ConnectionError, BrokenPipeError) as e:
                 self.log.error("could not move song down: %s" % e)
-                self.mpd_connect()
+                self.app.mpd_connect()
                 return None
             except Exception as e:
                 self.log.error("unknown error could not move song down: %s" % e)
@@ -1508,6 +1529,19 @@ class MPDFrontWindow(Gtk.ApplicationWindow):
             self.bottompaned.set_position(self.props.default_width/2)
         #self.set_current_albumart()
 
+    def edit_playlist_response(self, dialog, response):
+        if response == 1:
+            self.playlist_moveup()
+        elif response == 2:
+            self.playlist_movedown()
+        elif response == 3:
+            dialog.destroy()
+            self.playlist_delete()
+        elif response == 4:
+            song = self.playlist_list.get_selected_row().get_child().data
+            self.app.mpd.playid(song['id'])
+            dialog.destroy()
+
 class MPDFrontApp(Gtk.Application):
     css_provider = None
     mpd_client = None
@@ -1527,12 +1561,16 @@ class MPDFrontApp(Gtk.Application):
         self.connect('activate', self.on_activate)
         self.connect('shutdown', self.on_quit)
 
+        self.card_id = int(self.config.get("main", "sound_card"))
+        self.device_id = int(self.config.get("main", "sound_device"))
+
         try:
             self.mpd_connect()
             self.mpd_idle = MPDIdleClient(config.get("main", "host"), int(config.get("main", "port")), app=self)
         except Exception as e:
             self.log.error("could not connect to mpd: %s" % e)
             raise e
+
         self.mpd_stats = self.mpd.stats()
         self.log.debug("mpd stats: %s" % self.mpd_stats)
         self.mpd_outputs = self.mpd.outputs()
