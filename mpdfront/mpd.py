@@ -33,6 +33,15 @@ class Client:
             raise e
 
     def run_command(self, callback, *args, **kwargs):
+        """
+        Calls callback(), assuming it is an MPD command. If it fails on connection-related errors, attempt to reconnect
+        to MPD. Keeps trying until the connection and command stop throwing connection-related exceptions or abort on
+        unknown exceptions.
+        :param callback: function to call
+        :param args: args for callback
+        :param kwargs: args for callback
+        :return:
+        """
         try_reconnect = False
         while True:
             if try_reconnect:
@@ -45,11 +54,13 @@ class Client:
                     continue
             try:
                 return callback(*args, **kwargs)
-            except (musicpd.ConnectionError, BrokenPipeError) as e:
+            except (musicpd.ConnectionError, BrokenPipeError, ConnectionResetError, ConnectionError,
+                    ConnectionAbortedError, ConnectionRefusedError) as e:
                 log.error("command failed: %s" % e)
                 try_reconnect = True
                 time.sleep(_RETRY_WAIT)
             except Exception as e:
+                log.error("unhandled exception: %s" % e)
                 raise e
 
     def list(self, *args, **kwargs):
@@ -209,26 +220,33 @@ class IdleClientThread:
                 continue
             else:
                 log.debug("changes: %s" % changes)
+                playlist_refreshed = False
                 for c in changes:
-                    if c == "playlist":
+                    if c == "playlist" and not playlist_refreshed:
                         log.debug("playlist changes")
                         playlistinfo = self.mpd.playlistinfo()
                         currentsong = self.mpd.currentsong()
                         self.queue.put({ "type": "change", "item": "playlist", "playlist": playlistinfo, "current": currentsong })
+                        playlist_refreshed = True
                     elif c == "player":
                         log.debug("player changes")
                         status = self.mpd.status()
                         currentsong = self.mpd.currentsong()
                         self.queue.put({ "type": "change", "item": "player", "status": status, "current": currentsong })
+                        if not playlist_refreshed:
+                            playlistinfo = self.mpd.playlistinfo()
+                            self.queue.put({"type": "change", "item": "playlist", "playlist": playlistinfo,
+                                            "current": currentsong})
+                            playlist_refreshed = True
                     elif c == "database":
                         log.debug("database changes")
-                        self.queue.put("change:database")
+                        self.queue.put({ "type": "change", "item": "database" })
                     elif c == "outputs":
                         log.debug("outputs changes")
-                        self.queue.put("change:outputs")
+                        self.queue.put({ "type": "change", "item": "outputs" })
                     elif c == "mixer":
                         log.debug("mixer changes")
-                        self.queue.put("change:mixer")
+                        self.queue.put({ "type": "change", "item": "mixer" })
                     else:
                         log.info("Unhandled change: %s" % c)
 

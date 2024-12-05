@@ -37,17 +37,19 @@ def main():
     config.read(args.config)
 
     ## load logger config
-    try:
-        logger_config = config.get("main", "logger_config")
-        if logger_config and os.path.isfile(logger_config):
-            with open(logger_config, 'r') as f:
-                log_cfg = yaml.safe_load(f.read())
-            logging.config.dictConfig(log_cfg)
-    except configparser.NoOptionError as e:
-        pass
-    except Exception as e:
-        sys.stderr.write("could not load logger config: %s\n" % e)
+    if config.has_option("main", "logger_config"):
+        try:
+            logger_config = config.get("main", "logger_config")
+            if logger_config and os.path.isfile(logger_config):
+                with open(logger_config, 'r') as f:
+                    log_cfg = yaml.safe_load(f.read())
+                logging.config.dictConfig(log_cfg)
+        except configparser.NoOptionError as e:
+            pass
+        except Exception as e:
+            sys.stderr.write("could not load logger config: %s\n" % e)
 
+    ## Create App object and run it
     try:
         app = MpdFrontApp(config=config, css_file=args.css, application_id=Constants.application_id)
     except Exception as e:

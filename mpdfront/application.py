@@ -30,14 +30,14 @@ class MpdFrontApp(Gtk.Application):
         self.device_id = int(config.get("main", "sound_device"))
         self.host = config.get("main", "host")
         self.port = int(config.get("main", "port"))
-        self.com_queue = queue.Queue()
+        self.idle_queue = queue.Queue()
 
         self.connect('activate', self.on_activate)
         self.connect('shutdown', self.on_quit)
 
         try:
             self.mpd_cmd = mpd.Client(self.host, self.port)
-            self.mpd_idle = mpd.IdleClientThread(host=self.host, port=self.port, queue=self.com_queue)
+            self.mpd_idle = mpd.IdleClientThread(host=self.host, port=self.port, queue=self.idle_queue)
         except Exception as e:
             log.error("could not connect to mpd: %s" % e)
             raise e
@@ -55,6 +55,7 @@ class MpdFrontApp(Gtk.Application):
         self.get_files_list()
 
         self.thread_comms_timeout_id = GLib.timeout_add(Constants.check_thread_comms_interval, self.thread_comms_handler)
+        self.thread_comms_timeout_id = GLib.timeout_add(Constants.playback_update_interval_play, self.refresh_playback)
 
     def on_activate(self, app):
         self.window = MpdFrontWindow(application=self, config=self.config)
@@ -264,30 +265,9 @@ class MpdFrontApp(Gtk.Application):
         Updates playlist and playback if needed.
         Updates time info and progress bar.
         """
-        #log.debug("refreshing playback")
-
-        if self.mpd_status['state'] == "stop":
-            self.window.current_time_label.set_text("Stopped")
-            self.window.song_progress.set_value(0)
-        elif self.mpd_status['state'] == "pause":
-            self.window.current_time_label.set_text(pp_time(int(float(self.mpd_status['elapsed']))) + " / " + pp_time(
-                int(float(self.mpd_status['duration']))) + " Paused")
-        elif self.mpd_status['state'] == "play":
-            ## Perform a full refresh after 5 secs
-            since_last_update = time.time() - self.last_update_time
-            if since_last_update >= 5:
-                log.debug("full refresh")
-                self.window.update_playback()
-                self.last_update_time = time.time()
-                self.last_update_offset = int(float(self.mpd_status['elapsed']))
-            else:
-                ## Increment time and progress bar
-                current_offset = self.last_update_offset + int(since_last_update)
-                self.window.song_progress.set_value(current_offset)
-                self.window.current_time_label.set_text(
-                    pp_time(current_offset) + " / " + pp_time(int(float(self.mpd_status['duration']))) + " Playing")
-        else:
-            log.info("unknown state: %s" % self.mpd_status['state'])
+        mpd_status = self.mpd_cmd.status()
+        current_song = self.mpd_cmd.currentsong()
+        self.window.playback_display.update(mpd_status, current_song, self.config.get("main", "music_dir"))
         return True
 
     def get_files_list(self, path=""):
@@ -308,24 +288,22 @@ class MpdFrontApp(Gtk.Application):
         return rows
 
     def thread_comms_handler(self):
-        #log.debug("REFRESH")
         msg = None
         try:
-            if not self.com_queue.empty():
-                msg = self.com_queue.get_nowait()
+            if not self.idle_queue.empty():
+                msg = self.idle_queue.get_nowait()
                 log.debug("message from thread: %s" % msg)
         except Exception as e:
             return True
-        if not msg:
-            return True
-        elif isinstance(msg, dict) and 'type' in msg.keys():
+
+        if msg and isinstance(msg, dict) and 'type' in msg.keys():
             log.debug("processing queued message type: %s" % msg['type'])
             if msg['type'] == Constants.message_type_change:
                 if msg['item'] == Constants.message_item_playlist:
                     self.window.playlist_list.update(msg['playlist'], msg['current'])
                 if msg['item'] == Constants.message_item_player:
                     self.window.playback_display.update(msg['status'], msg['current'], self.config.get("main", "music_dir"))
-            return True
+        return True
 
 class DataCache():
     cache = {

@@ -40,4 +40,4 @@ class Constants:
     message_item_player = "player"
 
     check_thread_comms_interval = 330
-    playback_update_interval_play = 251
+    playback_update_interval_play = 501

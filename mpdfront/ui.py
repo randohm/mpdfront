@@ -52,12 +52,8 @@ def listbox_cmp_by_track(row1, row2, data, notify_destroy):
 def pp_time(secs):
     """
     Pretty-print time convenience function. Takes a count of seconds and formats to MM:SS.
-
-    Args:
-        secs: int of number of seconds
-
-    Returns:
-        string with the time in the format of MM:SS
+    :param secs: int of number of seconds
+    :return: string with the time in the format of MM:SS
     """
     return "%d:%02d" % (int(int(secs) / 60), int(secs) % 60)
 
@@ -107,10 +103,10 @@ class CardSelectDialog(Gtk.Dialog):
 
     def __init__(self, parent, button_pressed_callback, *args, **kwargs):
         """
-        Args:
-            parent: parent window
-            button_pressed_callback: callback function handling spinbutton change events.
-                                     callback accepts +1 args for the type of change.
+        :param parent: parent window
+        :param button_pressed_callback: callback function handling spinbutton change events. callback accepts +1 args for the type of change.
+        :param args: args for super's constructor
+        :param kwargs: args for super's constructor
         """
         super().__init__(title="Select Sound Card", parent=parent, *args, **kwargs)
         self.set_transient_for(parent)
@@ -158,9 +154,10 @@ class OutputsDialog(Gtk.Dialog):
 
     def __init__(self, parent, button_pressed_callback, *args, **kwargs):
         """
-        Args:
-            parent: parent window
-            button_pressed_callback: callback function handling checkbutton click events. callback accepts 1 arg with the output ID.
+        :param parent: parent window
+        :param button_pressed_callback: callback function handling checkbutton click events. callback accepts 1 arg with the output ID.
+        :param args: args for super's constructor
+        :param kwargs: args for super's constructor
         """
         super().__init__(title="Select Outputs", parent=parent, *args, **kwargs)
         self.set_transient_for(parent)
@@ -187,9 +184,10 @@ class OptionsDialog(Gtk.Dialog):
     """
     def __init__(self, parent, button_pressed_callback, *args, **kwargs):
         """
-        Args:
-            parent: parent window
-            button_pressed_callback: callback function handling checkbutton click events. callback accepts 1 arg with the option name.
+        :param parent: parent window
+        :param button_pressed_callback: callback function handling checkbutton click events. callback accepts 1 arg with the option name.
+        :param args: args for super's constructor
+        :param kwargs: args for super's constructor
         """
         super().__init__(title="Set Options", parent=parent, *args, **kwargs)
         self.set_transient_for(parent)
@@ -226,8 +224,6 @@ class OptionsDialog(Gtk.Dialog):
         self.destroy()
 
 class PlaylistConfirmDialog(Gtk.Dialog):
-    """
-    """
     def __init__(self, parent, add_item_name, *args, **kwargs):
         super().__init__(title="Update playlist?", parent=parent, *args, **kwargs)
         self.set_transient_for(parent)
@@ -237,10 +233,20 @@ class PlaylistConfirmDialog(Gtk.Dialog):
         self.add_button("Cancel", 3)
         self.get_content_area().append(Gtk.Label(label="Selected: " + add_item_name))
         self.get_content_area().set_size_request(300, 100)
-        #style_context = self.get_style_context()
-        #style_context.add_provider(self.css, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
-        self.connect('response', parent.playlist_dialog_response)
-        self.show()
+
+class PlaylistEditDialog(Gtk.Dialog):
+    def __init__(self, parent, song, *args, **kwargs):
+        super().__init__(title="Edit playlist", parent=parent, *args, **kwargs)
+        self.set_transient_for(parent)
+        self.set_modal(True)
+
+        for button_tuple in (("Play", 4), ("Up", 1), ("Down", 2), ("Delete", 3), ("Cancel", 0)):
+            self.add_button(button_tuple[0], button_tuple[1])
+        if 'title' in song:
+            self.get_content_area().append(Gtk.Label(label="Edit: " + song['title']))
+        else:
+            self.get_content_area().append(Gtk.Label(label="Edit: " + song['file']))
+        self.get_content_area().set_size_request(300, 100)
 
 class MetadataLabel(Gtk.Label):
     """
@@ -250,18 +256,14 @@ class MetadataLabel(Gtk.Label):
     def set_metadata(self, data):
         """
         Set the metadata for the label
-
-        Args:
-            data: can be anything
+        :param data: can be anything
         """
         self.data = data
 
     def set_metatype(self, t):
         """
         Set the metatype for the label
-
-        Args:
-            t: can be anything
+        :param t: can be anything
         """
         self.type = t
 
@@ -272,9 +274,7 @@ class IndexedListBox(Gtk.ListBox):
     def set_index(self, index):
         """
         Sets the index of the ListBox
-
-        Args:
-            index:  int, the ListBox's position in the parent's list
+        :param index:  int, the ListBox's position in the parent's list
         """
         self.index = index
 
@@ -286,13 +286,13 @@ class ColumnBrowser(Gtk.Box):
     def __init__(self, selected_callback=None, keypress_callback=None, cols=2, spacing=0, hexpand=True, vexpand=True, *args, **kwargs):
         """
         Constructor for the column browser.
-
-        Args:
-            selected_callback: callback function for handling row-selected events
-            keypress_callback: callback function for handling key-press-event events
-            cols: int for number of colums
-            hexpand: boolean for whether to set horizontal expansion
-            vexpand: boolean for whether to set vertical expansion
+        :param selected_callback: callback function for handling row-selected events
+        :param keypress_callback: callback function for handling key-press-event events
+        :param cols: int for number of colums
+        :param hexpand: boolean for whether to set horizontal expansion
+        :param vexpand: boolean for whether to set vertical expansion
+        :param args: args for super's constructor
+        :param kwargs: args for super's constructor
         """
         if not selected_callback or not keypress_callback:
             err_msg = "callback functions must be defined"
@@ -323,9 +323,7 @@ class ColumnBrowser(Gtk.Box):
         """
         Gets the child objects of all selected rows.
         Inserting them into a list in order from least to highest column index.
-
-        Returns:
-            list of selected rows' child objects.
+        :return: list of selected rows' child objects.
         """
         log.debug("looking for selected row")
         ret = []
@@ -339,10 +337,9 @@ class ColumnBrowser(Gtk.Box):
     def set_column_data(self, col_index, data, clear_rest=True):
         """
         Populates a column at col_index.
-        Args:
-            col_index:  int, column index
-            data:  dictionary
-            clear_rest: boolean, True: clear all columns to the left as well. default: True
+        :param col_index:  int, column index
+        :param data:  dictionary
+        :param clear_rest: boolean, True: clear all columns to the left as well. default: True
         """
         if clear_rest:
             for i in range(col_index, len(self.columns)):
@@ -374,7 +371,7 @@ class PlaybackDisplay(Gtk.Box):
 
         ## Current album art
         self.current_albumart = Gtk.Picture()
-        self.current_albumart.set_valign(Gtk.Align.START)
+        self.current_albumart.set_valign(Gtk.Align.END)
         self.current_albumart.set_halign(Gtk.Align.END)
         self.current_albumart.set_vexpand(True)
         self.current_albumart.set_hexpand(True)
@@ -389,6 +386,7 @@ class PlaybackDisplay(Gtk.Box):
         self.current_title_label.set_valign(Gtk.Align.START)
         self.current_title_label.set_wrap(True)
         self.current_title_label.set_hexpand(False)
+        self.current_title_label.set_justify(Gtk.Justification.LEFT)
 
         # artist label
         self.current_artist_label = Gtk.Label(label=" ")
@@ -398,6 +396,7 @@ class PlaybackDisplay(Gtk.Box):
         self.current_artist_label.set_ellipsize(Pango.EllipsizeMode.END)
         self.current_artist_label.set_wrap(False)
         self.current_artist_label.set_hexpand(False)
+        self.current_artist_label.set_justify(Gtk.Justification.LEFT)
 
         # album label
         self.current_album_label = Gtk.Label(label=" ")
@@ -407,22 +406,7 @@ class PlaybackDisplay(Gtk.Box):
         self.current_album_label.set_ellipsize(Pango.EllipsizeMode.END)
         self.current_album_label.set_wrap(False)
         self.current_album_label.set_hexpand(False)
-
-        # stats1 label
-        self.stats1_label = Gtk.Label(label=" ")
-        self.stats1_label.set_name("stats1")
-        self.stats1_label.set_halign(Gtk.Align.START)
-        self.stats1_label.set_valign(Gtk.Align.END)
-        self.stats1_label.set_wrap(True)
-        self.stats1_label.set_hexpand(True)
-
-        # stats2 label
-        self.stats2_label = Gtk.Label(label=" ")
-        self.stats2_label.set_name("stats2")
-        self.stats2_label.set_halign(Gtk.Align.START)
-        self.stats2_label.set_valign(Gtk.Align.END)
-        self.stats2_label.set_wrap(True)
-        self.stats2_label.set_hexpand(True)
+        self.current_album_label.set_justify(Gtk.Justification.LEFT)
 
         # time label
         self.current_time_label = Gtk.Label(label=" ")
@@ -432,13 +416,31 @@ class PlaybackDisplay(Gtk.Box):
         self.current_time_label.set_wrap(True)
         self.current_time_label.set_hexpand(False)
 
+        # stats1 label
+        self.stats1_label = Gtk.Label(label=" ")
+        self.stats1_label.set_name("stats1")
+        self.stats1_label.set_halign(Gtk.Align.START)
+        self.stats1_label.set_valign(Gtk.Align.END)
+        self.stats1_label.set_wrap(True)
+        self.stats1_label.set_hexpand(True)
+        self.stats1_label.set_justify(Gtk.Justification.LEFT)
+
+        # stats2 label
+        self.stats2_label = Gtk.Label(label=" ")
+        self.stats2_label.set_name("stats2")
+        self.stats2_label.set_halign(Gtk.Align.START)
+        self.stats2_label.set_valign(Gtk.Align.END)
+        self.stats2_label.set_wrap(True)
+        self.stats2_label.set_hexpand(True)
+        self.stats2_label.set_justify(Gtk.Justification.LEFT)
+
         ## Add labels to playback grid
         playback_info_box.append(self.current_title_label)
         playback_info_box.append(self.current_artist_label)
         playback_info_box.append(self.current_album_label)
         playback_info_box.append(self.current_time_label)
-        playback_info_box.append(self.stats2_label)
         playback_info_box.append(self.stats1_label)
+        playback_info_box.append(self.stats2_label)
 
         ## Song progress bar
         self.song_progress = Gtk.LevelBar()
@@ -496,8 +498,8 @@ class PlaybackDisplay(Gtk.Box):
         self.next_button.add_controller(next_button_ctrlr)
 
     def update(self, mpd_status=None, mpd_currentsong=None, music_dir=""):
-        log.debug("status: %s" % mpd_status)
-        log.debug("currentsong: %s" % mpd_currentsong)
+        #log.debug("status: %s" % mpd_status)
+        #log.debug("currentsong: %s" % mpd_currentsong)
 
         ## Set labels with song information. Set to empty if there is no current song.
         if mpd_currentsong:
@@ -538,11 +540,12 @@ class PlaybackDisplay(Gtk.Box):
                 format_text = "%3.1f kHz float PCM" % (float(freq) / 1000)
             else:
                 format_text = "%3.1f kHz %s bit PCM" % (float(freq) / 1000, bits)
-            self.stats1_label.set_markup("<small><b>src:</b></small> " + format_text + " @ " + bitrate + " kbps")
+            self.stats2_label.set_markup("<small><b>src:</b></small> " + format_text + " @ " + bitrate + " kbps")
 
             ## Get and format DAC rate, format
             dac_freq = dac_bits = ""
             proc_file = Constants.proc_file_fmt % (self.sound_card, self.sound_device, "0")
+            #proc_file = Constants.proc_file_fmt
             #log.debug("proc file: %s" % proc_file)
             if os.path.exists(proc_file):
                 lines = ()
@@ -573,7 +576,7 @@ class PlaybackDisplay(Gtk.Box):
             else:
                 #log.debug("proc file does not exist")
                 None
-            self.stats2_label.set_markup("<small><b>dac:</b></small> " + dac_text)
+            self.stats1_label.set_markup("<small><b>dac:</b></small> " + dac_text)
         else:
             self.stats1_label.set_text(" ")
             self.stats2_label.set_text(" ")
@@ -594,55 +597,55 @@ class PlaybackDisplay(Gtk.Box):
 
         self.set_current_albumart(mpd_currentsong, music_dir)
 
-    def get_albumart(self, audiofile, mpd_currentsong, music_dir):
+    def get_albumart(self, audiofile, mpd_currentsong):
         """
         Extract album art from a file, or look for a cover in its directory.
         Tries to fetch art from Last.fm if all else fails.
-
-        Args:
-            audiofile: string, path of the file containing the audio data
-
-        Returns:
-            raw image data
+        :param audiofile: string, path of the file containing the audio data
+        :return: raw image data
         """
         img_data = None
 
         ## Try to find album art in the media file
-        try:
-            if re.search(r'\.flac$', mpd_currentsong['file'], re.IGNORECASE):
-                a = FLAC(audiofile)
-                if len(a.pictures):
-                    img_data = a.pictures[0].data
-            elif re.search(r'\.m4a$', mpd_currentsong['file'], re.IGNORECASE):
-                a = MP4(audiofile)
-                if 'covr' in a.tags:
-                    if len(a.tags['covr']):
-                        img_data = a.tags['covr'][0]
-            else:
-                a = mutagen.File(audiofile)
-                for k in a.keys():
-                    if re.match(r'APIC:', k):
-                        img_data = a[k].data
-                        break
-        except Exception as e:
-            log.error("could not open audio file: %s" % e)
+        if not os.path.isfile(audiofile):
+            log.debug("audio file does not exist: %s" % audiofile)
+        else:
+            try:
+                if re.search(r'\.flac$', mpd_currentsong['file'], re.IGNORECASE):
+                    a = FLAC(audiofile)
+                    if len(a.pictures):
+                        img_data = a.pictures[0].data
+                elif re.search(r'\.m4a$', mpd_currentsong['file'], re.IGNORECASE):
+                    a = MP4(audiofile)
+                    if 'covr' in a.tags:
+                        if len(a.tags['covr']):
+                            img_data = a.tags['covr'][0]
+                else:
+                    a = mutagen.File(audiofile)
+                    for k in a.keys():
+                        if re.match(r'APIC:', k):
+                            img_data = a[k].data
+                            break
+            except Exception as e:
+                log.error("could not open audio file: %s" % e)
 
         ## Look for album art on the directory of the media file
         if not img_data:
             cover_path = ""
-            song_dir = music_dir + "/" + os.path.dirname(mpd_currentsong['file'])
-            try:
-                for f in os.listdir(song_dir):
-                    if re.match(r'cover\.(jpg|png|jpeg)', f, re.IGNORECASE):
-                        cover_path = song_dir + "/" + f
-                        break
-                log.debug("looking for cover file: %s" % cover_path)
-                if os.path.isfile(cover_path):
-                    cf = open(cover_path, 'rb')
-                    img_data = cf.read()
-                    cf.close()
-            except Exception as e:
-                log.error("error reading cover file: %s" % e)
+            song_dir = os.path.dirname(audiofile)
+            if os.path.isdir(song_dir):
+                try:
+                    for f in os.listdir(song_dir):
+                        if re.match(r'cover\.(jpg|png|jpeg)', f, re.IGNORECASE):
+                            cover_path = song_dir + "/" + f
+                            break
+                    log.debug("looking for cover file: %s" % cover_path)
+                    if os.path.isfile(cover_path):
+                        cf = open(cover_path, 'rb')
+                        img_data = cf.read()
+                        cf.close()
+                except Exception as e:
+                    log.error("error reading cover file: %s" % e)
         else:
             log.debug("album art loaded from audio file")
         return img_data
@@ -659,7 +662,7 @@ class PlaybackDisplay(Gtk.Box):
         if not hasattr(self, 'last_audiofile') or self.last_audiofile != audiofile:
             ## The file has changed since the last update, get the new album art.
             log.debug("new cover file, updating")
-            img_data = self.get_albumart(audiofile, mpd_currentsong, music_dir)
+            img_data = self.get_albumart(audiofile, mpd_currentsong)
             if img_data:
                 ## Album art retrieved, load it into a pixbuf
                 img = Image.open(io.BytesIO(img_data))
@@ -739,11 +742,12 @@ class PlaylistDisplay(Gtk.ListBox):
     """
     Handles display and updates of the playlist. The listbox entries are controlled by a Gio.ListStore listmodel.
     """
-    def __init__(self, *args, **kwargs):
+    def __init__(self, parent=None, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.set_name("playlistbox")
         self.liststore = Gio.ListStore()
         self.bind_model(model=self.liststore, create_widget_func=self.create_list_label)
+        self.parent = parent
 
     def update(self, playlist=None, mpd_currentsong=None):
         if playlist:
@@ -753,7 +757,12 @@ class PlaylistDisplay(Gtk.ListBox):
             for song in playlist:
                 log.debug("adding song to playlist: %s" % song['title'])
                 self.liststore.append(PlaylistTrack(song))
-
+            if self.parent.playlist_last_selected != None:
+                self.select_row(self.get_row_at_index(self.parent.playlist_last_selected))
+            if self.parent.focus_on == "playlist" and self.get_row_at_index(self.parent.playlist_last_selected):
+                self.get_row_at_index(self.parent.playlist_last_selected).grab_focus()
+            if 'pos' in mpd_currentsong:
+                self.get_row_at_index(int(mpd_currentsong['pos'])).set_name("current-track")
             log.debug("playlist refresh complete")
 
     def create_list_label(self, track):
@@ -778,7 +787,6 @@ class PlaylistTrack(GObject.GObject):
 
 class MpdFrontWindow(Gtk.ApplicationWindow):
     last_audiofile = ""  ## Tracks albumart for display
-    resize_event_on = False  ## Flag for albumart to resize
     browser_full = False  ## Tracks if the browser is fullscreen
     browser_hidden = False  ## Tracks if the browser is hidden
     last_width = 0  ## Tracks width of window when window changes size
@@ -818,7 +826,6 @@ class MpdFrontWindow(Gtk.ApplicationWindow):
 
         ## Setup bottom half
         self.bottompaned = Gtk.Paned(orientation=Gtk.Orientation.HORIZONTAL)
-        #self.bottompaned.set_position(int(config.get("main", "width"))/2)
         self.mainpaned.set_end_child(self.bottompaned)
 
         self.playback_display = PlaybackDisplay(parent=self, sound_card=self.config.get("main", "sound_card"),
@@ -828,7 +835,7 @@ class MpdFrontWindow(Gtk.ApplicationWindow):
                                      config.get("main", "music_dir"))
 
         ## Setup playlist
-        self.playlist_list = PlaylistDisplay()
+        self.playlist_list = PlaylistDisplay(parent=self)
         self.playlist_scroll = Gtk.ScrolledWindow()
         self.playlist_scroll.set_name("playlistscroll")
         self.playlist_scroll.set_hexpand(True)
@@ -839,7 +846,6 @@ class MpdFrontWindow(Gtk.ApplicationWindow):
         ## Set event handlers
         self.connect("destroy", self.close)
         self.connect("state_flags_changed", self.on_state_flags_changed)
-        #self.connect("check-resize", self.window_resized)
         playlist_list_controller = Gtk.EventControllerKey.new()
         playlist_list_controller.connect("key-pressed", self.playlist_key_pressed)
         self.playlist_list.add_controller(playlist_list_controller)
@@ -852,31 +858,6 @@ class MpdFrontWindow(Gtk.ApplicationWindow):
         self.browser_box.columns[0].select_row(self.browser_box.columns[0].get_row_at_index(0))
 
     ##  BEGIN EVENT HANDLERS
-
-    def window_resized(self, widget):
-        """
-        Handler for window resize event
-        """
-        #log.debug("Window resize event")
-        w = self.get_allocated_width()
-        h = self.get_allocated_height()
-        if self.last_width != w or self.last_height != h:
-            self.last_width = w
-            self.last_height = h
-            self.resize_event_on = True
-            self.resize_widgets()
-            self.set_current_albumart()
-            self.resize_event_on = False
-
-    def on_keypress(self, controller, keyval, keycode, state):
-        #log.debug("keypressed: %s %s %s" % (keyval, keycode, state))
-        ctrl_pressed = state & Gdk.ModifierType.CONTROL_MASK
-        cmd_pressed = state & Gdk.ModifierType.META_MASK
-        if keyval in (ord('q'), ord('Q')) and (ctrl_pressed or cmd_pressed):
-            log.debug("QUIT pressed")
-            self.close()
-
-    ##  Keyboard event handlers
     def key_pressed(self, controller, keyval, keycode, state):
         """
         Keypress handler for toplevel widget. Responds to global keys for playback control.
@@ -951,9 +932,6 @@ class MpdFrontWindow(Gtk.ApplicationWindow):
                 ## Hide bottom pane/fullscreen browser
                 if self.mainpaned.get_position() == self.last_height - 1:
                     self.mainpaned.set_position(int(self.last_height / 2))
-                    self.resize_event_on = True
-                    self.set_current_albumart()
-                    self.resize_event_on = False
                 else:
                     self.mainpaned.set_position(self.last_height)
 
@@ -963,9 +941,6 @@ class MpdFrontWindow(Gtk.ApplicationWindow):
                     self.mainpaned.set_position(int(self.last_height / 2))
                 else:
                     self.mainpaned.set_position(0)
-                self.resize_event_on = True
-                self.set_current_albumart()
-                self.resize_event_on = False
 
             elif keyval == ord(self.config.get("keys", "full_playback")):
                 ## Hide playlist
@@ -974,7 +949,7 @@ class MpdFrontWindow(Gtk.ApplicationWindow):
                 else:
                     self.bottompaned.set_position(self.last_width)
                 self.resize_event_on = True
-                self.set_current_albumart()
+                #self.set_current_albumart()
                 self.resize_event_on = False
 
             elif keyval == ord(self.config.get("keys", "full_playlist")):
@@ -982,7 +957,7 @@ class MpdFrontWindow(Gtk.ApplicationWindow):
                 if self.bottompaned.get_position() == 0:
                     self.bottompaned.set_position(int(self.last_width / 2))
                     self.resize_event_on = True
-                    self.set_current_albumart()
+                    #self.set_current_albumart()
                     self.resize_event_on = False
                 else:
                     self.bottompaned.set_position(0)
@@ -1030,8 +1005,6 @@ class MpdFrontWindow(Gtk.ApplicationWindow):
             self.playlist_movedown()
         elif keyval == ord(self.config.get("keys", "delete")):
             self.playlist_delete()
-
-    ##  Selected handlers
 
     def broswer_row_selected(self, listbox, row):
         """
@@ -1163,161 +1136,7 @@ class MpdFrontWindow(Gtk.ApplicationWindow):
                     rows.append(f)
                 self.browser_box.set_column_data(listbox.index + 1, rows)
                 self.browser_box.columns[listbox.index + 1].set_sort_func(listbox_cmp, None, False)
-
     ##  END EVENT HANDLERS
-
-    def get_albumart(self, audiofile):
-        """
-        Extract album art from a file, or look for a cover in its directory.
-        Tries to fetch art from Last.fm if all else fails.
-        Args:
-            audiofile: string, path of the file containing the audio data
-        Returns:
-            raw image data
-        """
-        img_data = None
-
-        ## Try to find album art in the media file
-        try:
-            if re.search(r'\.flac$', self.mpd_currentsong['file'], re.IGNORECASE):
-                a = FLAC(audiofile)
-                if len(a.pictures):
-                    img_data = a.pictures[0].data
-            elif re.search(r'\.m4a$', self.mpd_currentsong['file'], re.IGNORECASE):
-                a = MP4(audiofile)
-                if 'covr' in a.tags:
-                    if len(a.tags['covr']):
-                        img_data = a.tags['covr'][0]
-            else:
-                a = mutagen.File(audiofile)
-                for k in a.keys():
-                    if re.match(r'APIC:', k):
-                        img_data = a[k].data
-                        break
-        except Exception as e:
-            log.error("could not open audio file: %s" % e)
-
-        if img_data:
-            log.debug("album art found in audiofile")
-        else:
-            ## Look for album art on the directory of the media file
-            cover_path = ""
-            song_dir = self.config.get("main", "music_dir") + "/" + os.path.dirname(self.mpd_currentsong['file'])
-            try:
-                for f in os.listdir(song_dir):
-                    if re.match(r'cover\.(jpg|png|jpeg)', f, re.IGNORECASE):
-                        cover_path = song_dir + "/" + f
-                        break
-                log.debug("looking for cover file: %s" % cover_path)
-                if os.path.isfile(cover_path):
-                    cf = open(cover_path, 'rb')
-                    img_data = cf.read()
-                    cf.close()
-            except Exception as e:
-                log.error("error reading cover file: %s" % e)
-        return img_data
-
-    def set_current_albumart(self):
-        """
-        Load and display image of current song if it has changed since the last time this function was run, or on the first run.
-        Loads image data into a PIL.Image object, then into a GdkPixbuf object, then into a Gtk.Image object for display.
-        """
-        if not self.mpd_currentsong or not 'file' in self.mpd_currentsong.keys():
-            return
-
-        audiofile = self.config.get("main", "music_dir") + "/" + self.mpd_currentsong['file']
-        if self.last_audiofile != audiofile:
-            ## The file has changed since the last update, get the new album art.
-            log.debug("new audiofile, updating album art")
-            img_data = self.get_albumart(audiofile)
-            if img_data:
-                ## Album art retrieved, load it into a pixbuf
-                img = Image.open(io.BytesIO(img_data))
-                img_bytes = GLib.Bytes.new(img.tobytes())
-                log.debug("album art image size: %d x %d" % img.size)
-                w, h = img.size
-                if img.has_transparency_data:
-                    self.current_albumart_pixbuf = GdkPixbuf.Pixbuf.new_from_bytes(img_bytes, GdkPixbuf.Colorspace.RGB,
-                                                                                   True, 8, w, h, w * 4)
-                else:
-                    self.current_albumart_pixbuf = GdkPixbuf.Pixbuf.new_from_bytes(img_bytes, GdkPixbuf.Colorspace.RGB,
-                                                                                   False, 8, w, h, w * 3)
-            else:
-                ## No album art, clear the image in the UI.
-                log.debug("no album art available")
-                self.current_albumart.clear()
-                self.last_audiofile = audiofile
-                return
-
-        if self.last_audiofile != audiofile or self.resize_event_on:
-            ## Update the image
-            if self.current_albumart_pixbuf:
-                self.current_albumart.set_pixbuf(self.current_albumart_pixbuf)
-            else:
-                log.debug("could not get pixbuf, clearing album art")
-                self.current_albumart.clear()
-        self.last_audiofile = audiofile
-
-    def get_playlist(self):
-        """
-        Query for playlist. Clean up data before returning.
-
-        Returns:
-            list of filenames
-        """
-        error = False
-        try:
-            plist = self.app.mpd_cmd.playlistinfo()
-            #log.debug("playlist: %s" % plist)
-        except (musicpd.ConnectionError, BrokenPipeError) as e:
-            log.error("could not fetch playlist: %s" % e)
-            error = True
-        if error:
-            self.app.mpd_connect()
-            return None
-        #return plist
-        playlist = []
-        for song in plist:
-            #log.debug("file_info: %s" % song)
-            playlist.append(song)
-        return playlist
-
-    def update_playlist(self):
-        """
-        Updates playlist display. Makes MPD call for the playlist.
-        Clears the current playlist. Adds song titles to the listbox.
-        """
-        self.playlist_list.remove_all()
-        playlist = self.get_playlist()
-        #log.debug("playlist: %s" % playlist)
-        if not playlist:
-            return
-
-        ## Add songs to the list
-        for song in playlist:
-            log.debug("adding song to playlist: %s" % song['title'])
-            label_text = ""
-            if 'track' in song and 'time' in song and 'title' in song:
-                label_text = re.sub(r'/.*', '', html.escape(song['track'])) + " (" + html.escape(
-                    pp_time(song['time'])) + ") <b>" + html.escape(song['title']) + "</b>"
-            else:
-                label_text = os.path.basename(song['file'])
-            label = MetadataLabel()
-            label.set_markup(label_text)
-            label.set_metatype('song')
-            label.set_metadata(song)
-            label.set_halign(Gtk.Align.START)
-            self.playlist_list.append(label)
-
-        if self.playlist_last_selected != None:
-            self.playlist_list.select_row(self.playlist_list.get_row_at_index(self.playlist_last_selected))
-
-        if self.focus_on == "playlist" and self.playlist_list.get_row_at_index(self.playlist_last_selected):
-            self.playlist_list.get_row_at_index(self.playlist_last_selected).grab_focus()
-
-        if 'pos' in self.mpd_currentsong:
-            self.playlist_list.get_row_at_index(int(self.mpd_currentsong['pos'])).set_name("current")
-        log.debug("playlist refresh complete")
 
     def add_to_playlist(self):
         """
@@ -1333,32 +1152,19 @@ class MpdFrontWindow(Gtk.ApplicationWindow):
                 add_item_name += self.browser_selected_items[i]['data']['title'] + " "
             else:
                 add_item_name += self.browser_selected_items[i]['value'] + " "
-
-        self.playlist_confirm_dialog = PlaylistConfirmDialog(self, add_item_name)
+        self.playlist_confirm_dialog = PlaylistConfirmDialog(parent=self, add_item_name=add_item_name)
+        self.playlist_confirm_dialog.connect('response', self.playlist_dialog_response)
+        self.playlist_confirm_dialog.show()
 
     def edit_playlist(self):
         """
         Displays dialog with playlist edit options. Performs task based on user input.
         Play, move song up in playlist, down in playlist, delete from playlist.
         """
-        #index = self.playlist_list.get_selected_row().get_index()
         song = self.playlist_list.get_selected_row().get_child().data
-        #log.debug("selected song: %s" % song)
-
-        self.edit_playlist_dialog = Gtk.Dialog(title="Edit playlist", parent=self)
-        self.edit_playlist_dialog.set_transient_for(self)
-        self.edit_playlist_dialog.set_modal(True)
-        for button_tuple in (("Play", 4), ("Up", 1), ("Down", 2), ("Delete", 3), ("Cancel", 0)):
-            self.edit_playlist_dialog.add_button(button_tuple[0], button_tuple[1])
-        if 'title' in song:
-            self.edit_playlist_dialog.get_content_area().append(Gtk.Label(label="Edit: " + song['title']))
-        else:
-            self.edit_playlist_dialog.get_content_area().append(Gtk.Label(label="Edit: " + song['file']))
-        self.edit_playlist_dialog.get_content_area().set_size_request(300, 100)
-        #style_context = self.edit_playlist_dialog.get_style_context()
-        #style_context.add_provider(self.css, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
-        self.edit_playlist_dialog.connect('response', self.edit_playlist_response)
-        self.edit_playlist_dialog.show();
+        self.edit_playlist_dialog = PlaylistEditDialog(parent=self, song=song)
+        self.edit_playlist_dialog.connect('response', self.playlist_edit_response)
+        self.edit_playlist_dialog.show()
 
     def playlist_info_popup(self):
         """
@@ -1386,80 +1192,49 @@ class MpdFrontWindow(Gtk.ApplicationWindow):
 
     def outputs_changed(self, button, outputid):
         """
-        Callback function passed to OutputsDialog.
-        Expects the output ID, enables or disables the output based on the button's state.
-
-        Args:
-            button: Gtk.Button, event source
-            outputid: output ID from the button
-
+        Callback function passed to OutputsDialog. Expects the output ID, enables or disables the output based
+        on the button's state.
+        :param button: Gtk.Button, event source
+        :param outputid: output ID from the button
         """
-        #log.debug("outputid: %s, %s" % (outputid, button.get_active()))
-        error = False
-        try:
-            if button.get_active():
-                self.app.mpd_cmd.enableoutput(outputid)
-            else:
-                self.app.mpd_cmd.disableoutput(outputid)
-            self.app.mpd_outputs = self.app.mpd_cmd.outputs()
-        except (musicpd.ConnectionError, BrokenPipeError) as e:
-            log.info("previous mpd command failed: %s" % e)
-            error = True
-        if error:
-            self.app.mpd_connect()
+        if button.get_active():
+            self.app.mpd_cmd.enableoutput(outputid)
+        else:
+            self.app.mpd_cmd.disableoutput(outputid)
+        self.app.mpd_outputs = self.app.mpd_cmd.outputs()
 
     def options_changed(self, button, option):
         """
-        Callback function passed to OptionsDialog.
-        Sets/unsets options based on input.
-
-        Args:
-            button: Gtk.Button, event source
-            option: name of the option to change
+        Callback function passed to OptionsDialog. Sets/unsets options based on input.
+        :param button: Gtk.Button, event source
+        :param option: name of the option to change
         """
-        error = False
-        try:
-            if option == "consume":
-                self.app.mpd_cmd.consume(int(button.get_active()))
-            elif option == "random":
-                self.app.mpd_cmd.random(int(button.get_active()))
-            elif option == "repeat":
-                self.app.mpd_cmd.repeat(int(button.get_active()))
-            elif option == "single":
-                self.app.mpd_cmd.single(int(button.get_active()))
-            else:
-                log.info("unhandled option: %s" % option)
-        except (musicpd.ConnectionError, BrokenPipeError) as e:
-            log.info("previous mpd command failed: %s" % e)
-            error = True
-        if error:
-            self.app.mpd_connect()
+        if option == "consume":
+            self.app.mpd_cmd.consume(int(button.get_active()))
+        elif option == "random":
+            self.app.mpd_cmd.random(int(button.get_active()))
+        elif option == "repeat":
+            self.app.mpd_cmd.repeat(int(button.get_active()))
+        elif option == "single":
+            self.app.mpd_cmd.single(int(button.get_active()))
+        else:
+            log.info("unhandled option: %s" % option)
 
     def soundcard_changed(self, button, change):
-        """
-        """
         log.debug("changing sound card: %s = %s" % (change, button.get_value_as_int()))
         if change == "card_id":
             self.card_id = button.get_value_as_int()
         elif change == "device_id":
             self.device_id = button.get_value_as_int()
-        self.update_playback()
+        #self.playback_display.update()
 
     def playlist_moveup(self):
         index = self.playlist_list.get_selected_row().get_index()
         song = self.playlist_list.get_selected_row().get_child().data
         log.debug("moving song up 1: '%s'" % song['title'])
         if index > 0:
-            try:
-                index -= 1
-                self.app.mpd_cmd.moveid(song['id'], index)
-            except (musicpd.ConnectionError, BrokenPipeError) as e:
-                log.error("could not move song up: %s" % e)
-                self.mpd_connect()
-                return None
-            except Exception as e:
-                log.error("unknown error could not move song up: %s" % e)
-                return None
+            index -= 1
+            self.app.mpd_cmd.moveid(song['id'], index)
         self.playlist_last_selected = index
         self.focus_on = "playlist"
 
@@ -1467,16 +1242,8 @@ class MpdFrontWindow(Gtk.ApplicationWindow):
         index = self.playlist_list.get_selected_row().get_index()
         song = self.playlist_list.get_selected_row().get_child().data
         log.debug("moving song down 1: '%s'" % song['title'])
-        if index + 1 < len(self.playlist_list.get_children()):
-            try:
-                self.app.mpd_cmd.moveid(song['id'], index + 1)
-            except (musicpd.ConnectionError, BrokenPipeError) as e:
-                log.error("could not move song down: %s" % e)
-                self.app.mpd_connect()
-                return None
-            except Exception as e:
-                log.error("unknown error could not move song down: %s" % e)
-                return None
+        if index + 1 < len(self.playlist_list.liststore):
+            self.app.mpd_cmd.moveid(song['id'], index + 1)
         self.playlist_last_selected = index+1
         self.focus_on = "playlist"
 
@@ -1484,17 +1251,10 @@ class MpdFrontWindow(Gtk.ApplicationWindow):
         index = self.playlist_list.get_selected_row().get_index()
         song = self.playlist_list.get_selected_row().get_child().data
         log.debug("deleting song: '%s'" % song['title'])
-        try:
-            index -= 1
-            if index < 0:
-                index = 0
-            self.app.mpd_cmd.deleteid(song['id'])
-        except (musicpd.ConnectionError, BrokenPipeError) as e:
-            log.error("could not delete song: %s" % e)
-            self.app.mpd_connect()
-        except Exception as e:
-            log.error("unknown error could not delete song: %s" % e)
-            return None
+        index -= 1
+        if index < 0:
+            index = 0
+        self.app.mpd_cmd.deleteid(song['id'])
         self.playlist_last_selected = index
         self.focus_on = "playlist"
 
@@ -1502,33 +1262,24 @@ class MpdFrontWindow(Gtk.ApplicationWindow):
     def playlist_dialog_response(self, dialog, response):
         log.debug("dialog response: %s" % response)
         dialog.destroy()
-
-        error = False
-        try:
-            if response == 2:
-                ## Clear list before adding for "replace"
-                self.app.mpd_cmd.clear()
-
-            if response in (1, 2):
-                if self.browser_selected_items[-1]['type'] in ("song", "file"):
-                    #log.debug("adding song: %s" % selected_items[-1]['data']['title'])
-                    self.app.mpd_cmd.add(self.browser_selected_items[-1]['data']['file'])
-                elif self.browser_selected_items[-1]['type'] == "album":
-                    #log.debug("adding album: %s" % selected_items[-1]['value'])
-                    if self.browser_selected_items[-2]['type'] == "artist":
-                        self.app.mpd_cmd.findadd("artist", self.browser_selected_items[-2]['value'], "album", self.browser_selected_items[-1]['value'])
-                    elif self.browser_selected_items[-2]['type'] == "albumartist":
-                        self.app.mpd_cmd.findadd("albumartist", self.browser_selected_items[-2]['value'], "album",
-                                         self.browser_selected_items[-1]['value'])
-                    elif self.browser_selected_items[-2]['type'] == "genre":
-                        self.app.mpd_cmd.findadd("genre", self.browser_selected_items[-2]['value'], "album", self.browser_selected_items[-1]['value'])
-
-
-        except (musicpd.ConnectionError, BrokenPipeError) as e:
-            log.error("adding to playlist: %s" % e)
-            error = True
-        if error:
-            self.mpd_connect()
+        if response == 2:
+            ## Clear list before adding for "replace"
+            self.app.mpd_cmd.clear()
+        if response in (1, 2): ## Add or replace
+            if self.browser_selected_items[-1]['type'] in ("song", "file"):
+                #log.debug("adding song: %s" % selected_items[-1]['data']['title'])
+                self.app.mpd_cmd.add(self.browser_selected_items[-1]['data']['file'])
+            elif self.browser_selected_items[-1]['type'] == "album":
+                #log.debug("adding album: %s" % selected_items[-1]['value'])
+                if self.browser_selected_items[-2]['type'] == "artist":
+                    self.app.mpd_cmd.findadd("artist", self.browser_selected_items[-2]['value'], "album",
+                                             self.browser_selected_items[-1]['value'])
+                elif self.browser_selected_items[-2]['type'] == "albumartist":
+                    self.app.mpd_cmd.findadd("albumartist", self.browser_selected_items[-2]['value'], "album",
+                                     self.browser_selected_items[-1]['value'])
+                elif self.browser_selected_items[-2]['type'] == "genre":
+                    self.app.mpd_cmd.findadd("genre", self.browser_selected_items[-2]['value'], "album",
+                                             self.browser_selected_items[-1]['value'])
 
     def on_mainpaned_show(self, widget, user_data):
         log.debug("showed mainpaned, height: %d, %s" % (self.get_height(), user_data))
@@ -1555,7 +1306,7 @@ class MpdFrontWindow(Gtk.ApplicationWindow):
             self.bottompaned.set_position(self.props.default_width/2)
         #self.set_current_albumart()
 
-    def edit_playlist_response(self, dialog, response):
+    def playlist_edit_response(self, dialog, response):
         if response == 1:
             self.playlist_moveup()
         elif response == 2:
