@@ -3,8 +3,7 @@ MPD front end written in Python, with the goal of being able to use a keyboard f
 Using all keys will more easily translate to use with a remote control.
 The idea is that this will be the head on headless MPD in a home theater setup where the user can see the information up on the big screen.
 
-The app will attempt to get album art from the media file first, then look for cover.{jpg,png}, then attempt to fetch from Last.fm. 
-API keys are required to fetch from Last.fm
+The app will attempt to get album art from the media file first, then look for a file named cover.{jpg,png} in the music directory.
 
 
 ## Required libraries:
@@ -18,12 +17,13 @@ API keys are required to fetch from Last.fm
     - GObject
     - GLib
 - [Mutagen](https://mutagen.readthedocs.io/en/latest/) Audio file tags library
-- [pylast](https://github.com/pylast/pylast) Last.fm API library
 - [Pillow](http://pillow.readthedocs.io/en/latest/) Image library
 
 ## Current Status
 
-Working fairly well. Still a few bugs and TODOs left.
+Working fairly well. 
+Ported to GTK4. 
+Still a few bugs and TODOs left.
 
 ## Usage
 
@@ -33,9 +33,12 @@ usage: mpdfront [-h] [-c CONFIG]
 MPD Frontend
 
 optional arguments:
-  -h, --help            show this help message and exit
-  -c CONFIG, --config CONFIG
-                        Config file. (default: ~/.mpdfront/config)
+  -h, --help           show this help message and exit
+  -v, --verbose        Turn on verbose output. (default: False)
+  -H, --host HOST      Remote host name or IP address. (default: None)
+  -p, --port PORT      Remote TCP port number. (default: None)
+  -s, --css CSS        CSS file for the Gtk App. (default: None)
+  -c, --config CONFIG  Config file. (default: ~/.config/mpdfront/mpdfront.cfg)
 ```
 A config file is required, whether it is passed as an argument or in the default location: ```~/.mpdfront/config```.
 The config file is in ini format.
@@ -52,11 +55,7 @@ style=style.css
 music_dir=/music_dir
 sound_card=0
 sound_device=0
-
-[lastfm]
-api_key=
-api_secret=
-save_cover=no
+logger_config=logging.yml
 
 [keys]
 playpause=p
@@ -75,6 +74,9 @@ full_browser=3
 full_bottom=4
 full_playback=5
 full_playlist=6
+delete=d
+moveup=a
+movedown=s
 ```
 
 ### Config File Details
@@ -85,10 +87,7 @@ full_playlist=6
 - style: path to CSS file
 - music_dir: root music directory, normally set to the same as ```music_directory``` in mpd.conf
 - sound_card, sound_device: sound output device identifiers. ALSA device hw:2,1 would have sound_card=2, sound_device=1
-
-#### lastfm section
-- api_key, api_secret: keys used to access the Last.fm API
-- save_cover: if set to "yes", the file fetched from Last.fm will be written out to the same directory as the current song.
+- logger_config: path to YML config for Python logging.
 
 #### keys section
 - playpause: key to toggle play/pause
@@ -106,4 +105,6 @@ full_playlist=6
 - full_bottom: sets the bottom pane to full height
 - full_playback: sets the playback pane to full width
 - full_playlist: sets the playlist to full width
-
+- delete: delete track in playlist
+- moveup: move track up in playklist
+- movedown: move track down in playlist
