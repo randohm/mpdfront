@@ -1,14 +1,18 @@
 import sys, os, signal
+import logging, logging.config
 import argparse
 import configparser
+import yaml
 from .constants import Constants
 from .application import MpdFrontApp
+
+log = logging.getLogger(__name__)
 
 def signal_exit(sig, frame):
     """
     Perform a clean exit.
     """
-    sys.stderr.write("caught signal %s, exiting" % signal.Signals(sig).name)
+    sys.stderr.write("caught signal %s, exiting\n" % signal.Signals(sig).name)
     sys.exit(0)
 
 def main():
@@ -31,6 +35,18 @@ def main():
         sys.exit(1)
     config = configparser.ConfigParser()
     config.read(args.config)
+
+    ## load logger config
+    try:
+        logger_config = config.get("main", "logger_config")
+        if logger_config and os.path.isfile(logger_config):
+            with open(logger_config, 'r') as f:
+                log_cfg = yaml.safe_load(f.read())
+            logging.config.dictConfig(log_cfg)
+    except configparser.NoOptionError as e:
+        pass
+    except Exception as e:
+        sys.stderr.write("could not load logger config: %s\n" % e)
 
     try:
         app = MpdFrontApp(config=config, css_file=args.css, application_id=Constants.application_id)

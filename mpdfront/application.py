@@ -1,22 +1,15 @@
-import sys, time, os
+import time, os
 import logging
 import queue
 import gi
+from .ui import MpdFrontWindow
+from . import mpd
+from .constants import Constants
 
 gi.require_version("Gtk", "4.0")
 from gi.repository import Gtk, Gdk, GdkPixbuf, GObject, Pango, GLib, Gio
 
-from .constants import Constants
-from .ui import MpdFrontWindow
-from . import mpd
-
 log = logging.getLogger(__name__)
-log.setLevel(logging.DEBUG)
-formatter = logging.Formatter(Constants.log_format)
-handler = logging.StreamHandler(sys.stdout)
-handler.setFormatter(formatter)
-log.addHandler(handler)
-
 
 class MpdFrontApp(Gtk.Application):
     css_provider = None
@@ -33,16 +26,18 @@ class MpdFrontApp(Gtk.Application):
         super().__init__(*args, **kwargs)
         self.config = config
         self.css_file = css_file
-        self.card_id = int(self.config.get("main", "sound_card"))
-        self.device_id = int(self.config.get("main", "sound_device"))
+        self.card_id = int(config.get("main", "sound_card"))
+        self.device_id = int(config.get("main", "sound_device"))
+        self.host = config.get("main", "host")
+        self.port = int(config.get("main", "port"))
         self.com_queue = queue.Queue()
 
         self.connect('activate', self.on_activate)
         self.connect('shutdown', self.on_quit)
 
         try:
-            self.mpd_cmd = mpd.CommandsClient(config.get("main", "host"), int(config.get("main", "port")))
-            self.mpd_idle = mpd.IdleClient(config.get("main", "host"), int(config.get("main", "port")), queue=self.com_queue)
+            self.mpd_cmd = mpd.Client(self.host, self.port)
+            self.mpd_idle = mpd.IdleClientThread(host=self.host, port=self.port, queue=self.com_queue)
         except Exception as e:
             log.error("could not connect to mpd: %s" % e)
             raise e
@@ -52,7 +47,14 @@ class MpdFrontApp(Gtk.Application):
         self.mpd_outputs = self.mpd_cmd.outputs()
         log.debug("mpd outputs: %s" % self.mpd_outputs)
 
-        #self.refresh_playback_timeout_id = GLib.timeout_add(500, self.refresh_playback)
+        # initialize cache
+        self.get_albumartists()
+        self.get_artists()
+        self.get_albums()
+        self.get_genres()
+        self.get_files_list()
+
+        self.thread_comms_timeout_id = GLib.timeout_add(Constants.check_thread_comms_interval, self.thread_comms_handler)
 
     def on_activate(self, app):
         self.window = MpdFrontWindow(application=self, config=self.config)
@@ -304,6 +306,26 @@ class MpdFrontApp(Gtk.Application):
                     finfo = {'file': f['file']}
                 rows.append({'type': 'file', 'value': filename, 'data': finfo})
         return rows
+
+    def thread_comms_handler(self):
+        #log.debug("REFRESH")
+        msg = None
+        try:
+            if not self.com_queue.empty():
+                msg = self.com_queue.get_nowait()
+                log.debug("message from thread: %s" % msg)
+        except Exception as e:
+            return True
+        if not msg:
+            return True
+        elif isinstance(msg, dict) and 'type' in msg.keys():
+            log.debug("processing queued message type: %s" % msg['type'])
+            if msg['type'] == Constants.message_type_change:
+                if msg['item'] == Constants.message_item_playlist:
+                    self.window.playlist_list.update(msg['playlist'], msg['current'])
+                if msg['item'] == Constants.message_item_player:
+                    self.window.playback_display.update(msg['status'], msg['current'], self.config.get("main", "music_dir"))
+            return True
 
 class DataCache():
     cache = {

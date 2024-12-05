@@ -5,15 +5,10 @@ import musicpd
 from .constants import Constants
 
 log = logging.getLogger(__name__)
-log.setLevel(logging.DEBUG)
-formatter = logging.Formatter(Constants.log_format)
-handler = logging.StreamHandler(sys.stdout)
-handler.setFormatter(formatter)
-log.addHandler(handler)
 
-RETRY_WAIT=500
+_RETRY_WAIT=1000
 
-class CommandsClient:
+class Client:
     def __init__(self, host:str=None, port:int=None):
         if not host or not port:
             err_msg = "host or port not defined"
@@ -24,16 +19,15 @@ class CommandsClient:
         try:
             self.mpd = musicpd.MPDClient()
             self.mpd.connect(host, port)
-            log.debug("connected to mpd %s:%d" % (host, port))
+            log.info("connected to mpd %s:%d" % (host, port))
         except Exception as e:
             log.critical("could not connect to mpd %s:%d: %s" % (host, port, e))
             raise e
 
     def reconnect(self):
         try:
-            self.mpd = musicpd.MPDClient()
-            self.mpd.connect(self.host, self.port)
-            log.debug("reconnected to mpd %s:%d" % (self.host, self.port))
+            self.mpd.connect()
+            log.info("reconnected to mpd")
         except Exception as e:
             log.critical("could not reconnect to mpd %s:%d: %s" % (self.host, self.port, e))
             raise e
@@ -47,13 +41,14 @@ class CommandsClient:
                     try_reconnect = False
                 except Exception as e:
                     log.error("reconnect failed: %s" % e)
-                    time.sleep(RETRY_WAIT)
+                    time.sleep(_RETRY_WAIT)
                     continue
             try:
                 return callback(*args, **kwargs)
             except (musicpd.ConnectionError, BrokenPipeError) as e:
                 log.error("command failed: %s" % e)
                 try_reconnect = True
+                time.sleep(_RETRY_WAIT)
             except Exception as e:
                 raise e
 
@@ -135,15 +130,17 @@ class CommandsClient:
     def playid(self, *args, **kwargs):
         return self.run_command(self.mpd.playid, *args, **kwargs)
 
+    def send_idle(self, *args, **kwargs):
+        return self.run_command(self.mpd.send_idle, *args, **kwargs)
+
     def play_or_pause(self):
         """
         Check the player status, play if stopped, pause otherwise.
         """
-        if self.mpd.status()['state'] == "stop":
-            return self.mpd.play()
+        if self.status()['state'] == "stop":
+            return self.play()
         else:
-            return self.mpd.pause()
-
+            return self.pause()
 
 class UpdaterClient:
     def __init__(self, host:str=None, port:int=None):
@@ -159,7 +156,7 @@ class UpdaterClient:
             log.critical("could not connect to mpd %s:%d: %s" % (host, port, e))
             raise e
 
-class IdleClient:
+class IdleClientThread:
     """
     Connects to mpd and runs idle commands waiting for notification of state changes.
     """
@@ -181,8 +178,7 @@ class IdleClient:
         Updates UI to idle()
         """
         try:
-            self.mpd = musicpd.MPDClient()
-            self.mpd.connect(self.host, self.port)
+            self.mpd = Client(self.host, self.port)
         except Exception as e:
             log.error("could not connect to host %s at port %d: %s" % (self.host, self.port, e))
             raise e
@@ -192,8 +188,8 @@ class IdleClient:
             error = False
             reconnect = False
             try:
-                self.mpd.send_idle()
-                changes = self.mpd.fetch_idle()
+                self.mpd.mpd.send_idle()
+                changes = self.mpd.mpd.fetch_idle()
             except (musicpd.ConnectionError, BrokenPipeError) as e:
                 log.error("idle connection failed: %s" % e)
                 reconnect = True
@@ -203,7 +199,7 @@ class IdleClient:
                 error = True
             if reconnect:
                 try:
-                    self.mpd.connect()
+                    self.reconnect()
                 except (musicpd.ConnectionError, BrokenPipeError) as e:
                     log.error("idle failed reconnect: %s" % e)
                     time.sleep(RETRY_WAIT)
@@ -216,10 +212,14 @@ class IdleClient:
                 for c in changes:
                     if c == "playlist":
                         log.debug("playlist changes")
-                        self.queue.put("change:playlist")
+                        playlistinfo = self.mpd.playlistinfo()
+                        currentsong = self.mpd.currentsong()
+                        self.queue.put({ "type": "change", "item": "playlist", "playlist": playlistinfo, "current": currentsong })
                     elif c == "player":
                         log.debug("player changes")
-                        self.queue.put("change:player")
+                        status = self.mpd.status()
+                        currentsong = self.mpd.currentsong()
+                        self.queue.put({ "type": "change", "item": "player", "status": status, "current": currentsong })
                     elif c == "database":
                         log.debug("database changes")
                         self.queue.put("change:database")

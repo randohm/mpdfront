@@ -5,6 +5,7 @@ class Constants:
     log_format = "%(asctime)s %(levelname)s %(threadName)s %(module)s::%(funcName)s(%(lineno)d): %(message)s"
     config_file = os.environ['HOME'] + "/.config/mpdfront/mpdfront.cfg"
     idle_sleep_retry_connect = 2
+    display_referesh_interval = 330
 
     ## symbols for playback control button labels
     symbol_previous = chr(9612) + chr(9664)
@@ -27,9 +28,16 @@ class Constants:
         {'type': 'category', 'value': 'Album Artists', 'data': None},
         {'type': 'category', 'value': 'Artists', 'data': None},
         {'type': 'category', 'value': 'Albums', 'data': None},
-        {'type': 'category', 'value': 'Files', 'data': None},
         {'type': 'category', 'value': 'Genres', 'data': None},
+        {'type': 'category', 'value': 'Files', 'data': None},
     ]
 
     proc_file_fmt = "/proc/asound/card%s/pcm%sp/sub%s/hw_params"  ## proc file with DAC information
     #proc_file_fmt = "./hw_params"
+
+    message_type_change = "change"
+    message_item_playlist = "playlist"
+    message_item_player = "player"
+
+    check_thread_comms_interval = 330
+    playback_update_interval_play = 251

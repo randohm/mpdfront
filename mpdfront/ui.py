@@ -1,6 +1,6 @@
-import sys, re, time, os, html, io
+import re, os, html, io
 import logging
-import PIL
+#import PIL
 from PIL import Image
 import musicpd
 import mutagen
@@ -9,18 +9,12 @@ from mutagen.flac import FLAC
 from mutagen.dsf import DSF
 from mutagen.mp4 import MP4
 import gi
+from .constants import Constants
 
 gi.require_version("Gtk", "4.0")
 from gi.repository import Gtk, Gdk, GdkPixbuf, GObject, Pango, GLib, Gio
 
-from .constants import Constants
-
 log = logging.getLogger(__name__)
-log.setLevel(logging.DEBUG)
-formatter = logging.Formatter(Constants.log_format)
-handler = logging.StreamHandler(sys.stdout)
-handler.setFormatter(formatter)
-log.addHandler(handler)
 
 def listbox_cmp(row1, row2, data, notify_destroy):
     """
@@ -363,7 +357,7 @@ class ColumnBrowser(Gtk.Box):
             self.columns[col_index].append(label)
 
 class PlaybackDisplay(Gtk.Box):
-    def __init__(self, parent, sound_card:str=None, sound_device:int=None, *args, **kwargs):
+    def __init__(self, parent, sound_card:int=None, sound_device:int=None, *args, **kwargs):
         super().__init__(orientation=Gtk.Orientation.VERTICAL, *args, **kwargs)
         self.parent = parent
         self.sound_card = sound_card
@@ -649,6 +643,8 @@ class PlaybackDisplay(Gtk.Box):
                     cf.close()
             except Exception as e:
                 log.error("error reading cover file: %s" % e)
+        else:
+            log.debug("album art loaded from audio file")
         return img_data
 
     def set_current_albumart(self, mpd_currentsong=None, music_dir=""):
@@ -670,12 +666,16 @@ class PlaybackDisplay(Gtk.Box):
                 img_bytes = GLib.Bytes.new(img.tobytes())
                 log.debug("image size: %d x %d" % img.size)
                 w, h = img.size
-                if img.has_transparency_data:
-                    current_albumart_pixbuf = GdkPixbuf.Pixbuf.new_from_bytes(img_bytes, GdkPixbuf.Colorspace.RGB,
-                                                                                   True, 8, w, h, w * 4)
-                else:
-                    current_albumart_pixbuf = GdkPixbuf.Pixbuf.new_from_bytes(img_bytes, GdkPixbuf.Colorspace.RGB,
-                                                                                   False, 8, w, h, w * 3)
+                try:
+                    if img.has_transparency_data:
+                        current_albumart_pixbuf = GdkPixbuf.Pixbuf.new_from_bytes(img_bytes, GdkPixbuf.Colorspace.RGB,
+                                                                                       True, 8, w, h, w * 4)
+                    else:
+                        current_albumart_pixbuf = GdkPixbuf.Pixbuf.new_from_bytes(img_bytes, GdkPixbuf.Colorspace.RGB,
+                                                                                       False, 8, w, h, w * 3)
+                except Exception as e:
+                    log.error("could not load image into pixbuf: %s" % e)
+                    return
             else:
                 ## No album art, clear the image in the UI.
                 #self.current_albumart.clear()
@@ -754,14 +754,6 @@ class PlaylistDisplay(Gtk.ListBox):
                 log.debug("adding song to playlist: %s" % song['title'])
                 self.liststore.append(PlaylistTrack(song))
 
-            #if self.playlist_last_selected != None:
-            #    self.select_row(self.get_row_at_index(self.playlist_last_selected))
-
-            #if self.focus_on == "playlist" and self.playlist_list.get_row_at_index(self.playlist_last_selected):
-            #    self.get_row_at_index(self.playlist_last_selected).grab_focus()
-
-            #if 'pos' in mpd_currentsong:
-            #    self.get_row_at_index(int(mpd_currentsong['pos'])).set_name("current")
             log.debug("playlist refresh complete")
 
     def create_list_label(self, track):
@@ -848,19 +840,12 @@ class MpdFrontWindow(Gtk.ApplicationWindow):
         self.connect("destroy", self.close)
         self.connect("state_flags_changed", self.on_state_flags_changed)
         #self.connect("check-resize", self.window_resized)
-        #self.playlist_list.connect("key-pressed", self.playlist_key_pressed)
         playlist_list_controller = Gtk.EventControllerKey.new()
         playlist_list_controller.connect("key-pressed", self.playlist_key_pressed)
         self.playlist_list.add_controller(playlist_list_controller)
 
         if re.match(r'yes$', self.config.get("main", "fullscreen"), re.IGNORECASE):
             self.fullscreen()
-
-        self.app.get_albumartists()
-        self.app.get_artists()
-        self.app.get_albums()
-        self.app.get_genres()
-        self.app.get_files_list()
 
         self.playlist_last_selected = 0
         self.playlist_list.select_row(self.playlist_list.get_row_at_index(self.playlist_last_selected))
@@ -1046,7 +1031,6 @@ class MpdFrontWindow(Gtk.ApplicationWindow):
         elif keyval == ord(self.config.get("keys", "delete")):
             self.playlist_delete()
 
-
     ##  Selected handlers
 
     def broswer_row_selected(self, listbox, row):
@@ -1186,10 +1170,8 @@ class MpdFrontWindow(Gtk.ApplicationWindow):
         """
         Extract album art from a file, or look for a cover in its directory.
         Tries to fetch art from Last.fm if all else fails.
-
         Args:
             audiofile: string, path of the file containing the audio data
-
         Returns:
             raw image data
         """
@@ -1215,8 +1197,10 @@ class MpdFrontWindow(Gtk.ApplicationWindow):
         except Exception as e:
             log.error("could not open audio file: %s" % e)
 
-        ## Look for album art on the directory of the media file
-        if not img_data:
+        if img_data:
+            log.debug("album art found in audiofile")
+        else:
+            ## Look for album art on the directory of the media file
             cover_path = ""
             song_dir = self.config.get("main", "music_dir") + "/" + os.path.dirname(self.mpd_currentsong['file'])
             try:
@@ -1244,13 +1228,13 @@ class MpdFrontWindow(Gtk.ApplicationWindow):
         audiofile = self.config.get("main", "music_dir") + "/" + self.mpd_currentsong['file']
         if self.last_audiofile != audiofile:
             ## The file has changed since the last update, get the new album art.
-            log.debug("new cover file, updating")
+            log.debug("new audiofile, updating album art")
             img_data = self.get_albumart(audiofile)
             if img_data:
                 ## Album art retrieved, load it into a pixbuf
                 img = Image.open(io.BytesIO(img_data))
                 img_bytes = GLib.Bytes.new(img.tobytes())
-                log.debug("image size: %d x %d" % img.size)
+                log.debug("album art image size: %d x %d" % img.size)
                 w, h = img.size
                 if img.has_transparency_data:
                     self.current_albumart_pixbuf = GdkPixbuf.Pixbuf.new_from_bytes(img_bytes, GdkPixbuf.Colorspace.RGB,
@@ -1260,6 +1244,7 @@ class MpdFrontWindow(Gtk.ApplicationWindow):
                                                                                    False, 8, w, h, w * 3)
             else:
                 ## No album art, clear the image in the UI.
+                log.debug("no album art available")
                 self.current_albumart.clear()
                 self.last_audiofile = audiofile
                 return
