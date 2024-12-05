@@ -8,10 +8,13 @@ def read_requirements(file):
 
 setup(
     name = "mpdfront",
-    version = "0.2.1",
+    version = "0.2.2",
     license = "Apache License v2.0",
     url = "https://github.com/randohm/mpdfront.git",
+    description = "Frontend for MPD",
     long_description = open("README.md").read(),
     packages = find_packages(),
     install_requires=read_requirements("requirements.txt"),
+    scripts = ['bin/mpdfront'],
+    data_files = [ ('share/mpdfront', [ 'style.css', 'logging.yml' ]) ],
 )
