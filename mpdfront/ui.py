@@ -1,8 +1,8 @@
+import queue
+import configparser
 import re, os, html, io
 import logging
-#import PIL
 from PIL import Image
-import musicpd
 import mutagen
 from mutagen.id3 import ID3, APIC
 from mutagen.flac import FLAC
@@ -10,6 +10,7 @@ from mutagen.dsf import DSF
 from mutagen.mp4 import MP4
 import gi
 from .constants import Constants
+from .message import QueueMessage
 
 gi.require_version("Gtk", "4.0")
 from gi.repository import Gtk, Gdk, GdkPixbuf, GObject, Pango, GLib, Gio
@@ -182,7 +183,7 @@ class OptionsDialog(Gtk.Dialog):
     Displays dialog of options. Each option is an individual CheckButton.
     Button click events are handled by a callback function passed to __init__.
     """
-    def __init__(self, parent, button_pressed_callback, *args, **kwargs):
+    def __init__(self, parent, button_pressed_callback, mpd_status, *args, **kwargs):
         """
         :param parent: parent window
         :param button_pressed_callback: callback function handling checkbutton click events. callback accepts 1 arg with the option name.
@@ -195,7 +196,6 @@ class OptionsDialog(Gtk.Dialog):
         self.add_button("Close", 0)
         self.set_name("options-dialog")
         self.get_content_area().set_size_request(300, 200)
-        mpd_status = parent.app.mpd_cmd.status()
 
         self.consume_button = Gtk.CheckButton.new_with_label("Consume")
         self.consume_button.set_active(int(mpd_status['consume']))
@@ -283,7 +283,7 @@ class ColumnBrowser(Gtk.Box):
     Column browser for a tree data structure. Inherits from GtkBox.
     Creates columns with a list of GtkScrolledWindows containing a GtkListBox.
     """
-    def __init__(self, selected_callback=None, keypress_callback=None, cols=2, spacing=0, hexpand=True, vexpand=True, *args, **kwargs):
+    def __init__(self, selected_callback, keypress_callback, cols=2, spacing=0, hexpand=True, vexpand=True, *args, **kwargs):
         """
         Constructor for the column browser.
         :param selected_callback: callback function for handling row-selected events
@@ -354,7 +354,7 @@ class ColumnBrowser(Gtk.Box):
             self.columns[col_index].append(label)
 
 class PlaybackDisplay(Gtk.Box):
-    def __init__(self, parent, sound_card:int=None, sound_device:int=None, *args, **kwargs):
+    def __init__(self, parent, sound_card:int, sound_device:int, *args, **kwargs):
         super().__init__(orientation=Gtk.Orientation.VERTICAL, *args, **kwargs)
         self.parent = parent
         self.sound_card = sound_card
@@ -497,7 +497,7 @@ class PlaybackDisplay(Gtk.Box):
         next_button_ctrlr.connect("pressed", self.next_clicked)
         self.next_button.add_controller(next_button_ctrlr)
 
-    def update(self, mpd_status=None, mpd_currentsong=None, music_dir=""):
+    def update(self, mpd_status:dict, mpd_currentsong:dict, music_dir:str):
         #log.debug("status: %s" % mpd_status)
         #log.debug("currentsong: %s" % mpd_currentsong)
 
@@ -597,7 +597,7 @@ class PlaybackDisplay(Gtk.Box):
 
         self.set_current_albumart(mpd_currentsong, music_dir)
 
-    def get_albumart(self, audiofile, mpd_currentsong):
+    def get_albumart(self, audiofile:dict, mpd_currentsong:dict):
         """
         Extract album art from a file, or look for a cover in its directory.
         Tries to fetch art from Last.fm if all else fails.
@@ -650,7 +650,7 @@ class PlaybackDisplay(Gtk.Box):
             log.debug("album art loaded from audio file")
         return img_data
 
-    def set_current_albumart(self, mpd_currentsong=None, music_dir=""):
+    def set_current_albumart(self, mpd_currentsong:dict, music_dir:str):
         """
         Load and display image of current song if it has changed since the last time this function was run, or on the first run.
         Loads image data into a PIL.Image object, then into a GdkPixbuf object, then into a Gtk.Image object for display.
@@ -700,56 +700,63 @@ class PlaybackDisplay(Gtk.Box):
         """
         Click handler for previous button
         """
-        self.parent.app.mpd_cmd.previous()
+        self.parent.cmd_queue.put(QueueMessage(type=Constants.message_type_command, item="previous"))
         controller.reset()
 
     def rewind_clicked(self, controller, x, y, user_data):
         """
         Click handler for rewind button
         """
-        self.parent.app.mpd_cmd.seekcur("-5")
+        #self.parent.app.mpd_cmd.seekcur("-5")
+        self.parent.cmd_queue.put(QueueMessage(type=Constants.message_type_command, item="seekcur", data=["-5"]))
         controller.reset()
 
     def stop_clicked(self, controller, x, y, user_data):
         """
         Click handler for stop button
         """
-        self.parent.app.mpd_cmd.stop()
+        self.parent.cmd_queue.put(QueueMessage(type=Constants.message_type_command, item="stop"))
         controller.reset()
 
     def play_clicked(self, controller, x, y, user_data):
         """
         Click handler for play/pause button
         """
-        self.parent.app.mpd_cmd.play_or_pause()
+        self.parent.cmd_queue.put(QueueMessage(type=Constants.message_type_command, item="toggle"))
         controller.reset()
 
     def cue_clicked(self, controller, x, y, user_data):
         """
         Click handler for cue button
         """
-        self.parent.app.mpd_cmd.seekcur("+5")
+        #self.parent.app.mpd_cmd.seekcur("+5")
+        self.parent.cmd_queue.put(QueueMessage(type=Constants.message_type_command, item="seekcur", data=["+5"]))
         controller.reset()
 
     def next_clicked(self, controller, x, y, user_data):
         """
         Click handler for next button
         """
-        self.parent.app.mpd_cmd.next()
+        self.parent.cmd_queue.put(QueueMessage(type=Constants.message_type_command, item="next"))
         controller.reset()
 
 class PlaylistDisplay(Gtk.ListBox):
     """
     Handles display and updates of the playlist. The listbox entries are controlled by a Gio.ListStore listmodel.
     """
-    def __init__(self, parent=None, *args, **kwargs):
+    last_selected = 0  ## Points to last selected song in playlist
+
+    def __init__(self, parent:Gtk.Window, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.set_name("playlistbox")
         self.liststore = Gio.ListStore()
         self.bind_model(model=self.liststore, create_widget_func=self.create_list_label)
         self.parent = parent
+        controller = Gtk.EventControllerKey.new()
+        controller.connect("key-pressed", self.on_key_pressed)
+        self.add_controller(controller)
 
-    def update(self, playlist=None, mpd_currentsong=None):
+    def update(self, playlist:dict, mpd_currentsong:dict):
         if playlist:
             self.liststore.remove_all()
             log.debug("playlist: %s" % playlist)
@@ -757,10 +764,10 @@ class PlaylistDisplay(Gtk.ListBox):
             for song in playlist:
                 log.debug("adding song to playlist: %s" % song['title'])
                 self.liststore.append(PlaylistTrack(song))
-            if self.parent.playlist_last_selected != None:
-                self.select_row(self.get_row_at_index(self.parent.playlist_last_selected))
-            if self.parent.focus_on == "playlist" and self.get_row_at_index(self.parent.playlist_last_selected):
-                self.get_row_at_index(self.parent.playlist_last_selected).grab_focus()
+            if self.last_selected != None:
+                self.select_row(self.get_row_at_index(self.last_selected))
+            if self.parent.focus_on == "playlist" and self.get_row_at_index(self.last_selected):
+                self.get_row_at_index(self.last_selected).grab_focus()
             if 'pos' in mpd_currentsong:
                 self.get_row_at_index(int(mpd_currentsong['pos'])).set_name("current-track")
             log.debug("playlist refresh complete")
@@ -778,6 +785,89 @@ class PlaylistDisplay(Gtk.ListBox):
         label.set_halign(Gtk.Align.START)
         return label
 
+    def on_key_pressed(self, controller, keyval, keycode, state):
+        """
+        Event handler for playlist box key presses
+        """
+        if keyval == Gdk.KEY_Return:
+            self.edit_popup()
+        elif keyval == ord(self.parent.config.get("keys", "info")):
+            self.info_popup()
+        elif keyval == ord(self.parent.config.get("keys", "moveup")):
+            self.track_moveup()
+        elif keyval == ord(self.parent.config.get("keys", "movedown")):
+            self.track_movedown()
+        elif keyval == ord(self.parent.config.get("keys", "delete")):
+            self.track_delete()
+
+    def edit_popup(self):
+        """
+        Displays dialog with playlist edit options. Performs task based on user input.
+        Play, move song up in playlist, down in playlist, delete from playlist.
+        """
+        song = self.get_selected_row().get_child().data
+        self.edit_playlist_dialog = PlaylistEditDialog(parent=self.parent, song=song)
+        self.edit_playlist_dialog.connect('response', self.edit_response)
+        self.edit_playlist_dialog.show()
+
+    def edit_response(self, dialog, response):
+        if response == 1:
+            self.track_moveup()
+        elif response == 2:
+            self.track_movedown()
+        elif response == 3:
+            dialog.destroy()
+            self.track_delete()
+        elif response == 4:
+            song = self.get_selected_row().get_child().data
+            self.parent.cmd_queue.put(QueueMessage(type=Constants.message_type_command, item="playid", data=(song['id'])))
+            dialog.destroy()
+        elif response == 0:
+            dialog.destroy()
+
+    def info_popup(self):
+        """
+        Call SongInfoDialog to display the song data from the selected playlist row
+        """
+        song = self.get_selected_row().get_child().data
+        if song is None:
+            return
+        log.debug("song info: %s" % song)
+        dialog = SongInfoDialog(self.parent, song)
+
+    def track_moveup(self):
+        index = self.get_selected_row().get_index()
+        song = self.get_selected_row().get_child().data
+        log.debug("moving song up 1: '%s'" % song['title'])
+        if index > 0:
+            index -= 1
+            #self.app.mpd_cmd.moveid(song['id'], index)
+            self.parent.cmd_queue.put(QueueMessage(type=Constants.message_type_command, item="moveid", data=[song['id'], index]))
+        self.last_selected = index
+        self.focus_on = "playlist"
+
+    def track_movedown(self):
+        index = self.get_selected_row().get_index()
+        song = self.get_selected_row().get_child().data
+        log.debug("moving song down 1: '%s'" % song['title'])
+        if index + 1 < len(self.liststore):
+            #self.app.mpd_cmd.moveid(song['id'], index+1)
+            self.parent.cmd_queue.put(QueueMessage(type=Constants.message_type_command, item="moveid", data=[song['id'], index+1]))
+        self.last_selected = index+1
+        self.focus_on = "playlist"
+
+    def track_delete(self):
+        index = self.get_selected_row().get_index()
+        song = self.get_selected_row().get_child().data
+        log.debug("deleting song: '%s'" % song['title'])
+        index -= 1
+        if index < 0:
+            index = 0
+        #self.app.mpd_cmd.deleteid(song['id'])
+        self.parent.cmd_queue.put(QueueMessage(type=Constants.message_type_command, item="deleteid", data=[song['id']]))
+        self.last_selected = index
+        self.focus_on = "playlist"
+
 class PlaylistTrack(GObject.GObject):
     def __init__(self, song: dict, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -786,18 +876,19 @@ class PlaylistTrack(GObject.GObject):
             setattr(self, k, song[k])
 
 class MpdFrontWindow(Gtk.ApplicationWindow):
-    last_audiofile = ""  ## Tracks albumart for display
-    browser_full = False  ## Tracks if the browser is fullscreen
-    browser_hidden = False  ## Tracks if the browser is hidden
-    last_width = 0  ## Tracks width of window when window changes size
-    last_height = 0  ## Tracks height of window when window changes size
-    playlist_last_selected = None  ## Points to last selected song in playlist
-    focus_on = "broswer"  ## Either 'playlist' or 'browser'
+    last_audiofile = ""         ## Tracks albumart for display
+    browser_full = False        ## Tracks if the browser is fullscreen
+    browser_hidden = False      ## Tracks if the browser is hidden
+    last_width = 0              ## Tracks width of window when window changes size
+    last_height = 0             ## Tracks height of window when window changes size
+    playlist_last_selected = 0  ## Points to last selected song in playlist
+    focus_on = "broswer"        ## Either 'playlist' or 'browser'
     initial_resized = False
 
-    def __init__(self, config=None, application=None, *args, **kwargs):
-        if not config or not application:
-            err_msg = "config or app cannot be None"
+    def __init__(self, config:configparser, application:Gtk.ApplicationWindow, queue:queue.Queue,
+                 data_queue:queue.Queue, *args, **kwargs):
+        if not config or not application or not queue or not data_queue:
+            err_msg = "config, application, queue, data_queue are required arguments"
             log.error(err_msg)
             raise ValueError(err_msg)
         super().__init__(application=application, *args, **kwargs)
@@ -806,9 +897,11 @@ class MpdFrontWindow(Gtk.ApplicationWindow):
         self.set_resizable(False)
         self.set_decorated(False)
         self.app = application
+        self.cmd_queue = queue
+        self.data_queue = data_queue
 
         self.controller = Gtk.EventControllerKey.new()
-        self.controller.connect('key-pressed', self.key_pressed)
+        self.controller.connect('key-pressed', self.on_key_pressed)
         self.add_controller(self.controller)
 
         ## mainpaned is the toplevel layout container
@@ -831,8 +924,7 @@ class MpdFrontWindow(Gtk.ApplicationWindow):
         self.playback_display = PlaybackDisplay(parent=self, sound_card=self.config.get("main", "sound_card"),
                                                 sound_device=self.config.get("main", "sound_device"))
         self.bottompaned.set_start_child(self.playback_display)
-        self.playback_display.update(self.app.mpd_cmd.status(), self.app.mpd_cmd.currentsong(),
-                                     config.get("main", "music_dir"))
+        self.playback_display.update(self.app.get_mpd_status(), self.app.mpd_cmd.currentsong(), config.get("main", "music_dir"))
 
         ## Setup playlist
         self.playlist_list = PlaylistDisplay(parent=self)
@@ -846,9 +938,6 @@ class MpdFrontWindow(Gtk.ApplicationWindow):
         ## Set event handlers
         self.connect("destroy", self.close)
         self.connect("state_flags_changed", self.on_state_flags_changed)
-        playlist_list_controller = Gtk.EventControllerKey.new()
-        playlist_list_controller.connect("key-pressed", self.playlist_key_pressed)
-        self.playlist_list.add_controller(playlist_list_controller)
 
         if re.match(r'yes$', self.config.get("main", "fullscreen"), re.IGNORECASE):
             self.fullscreen()
@@ -857,8 +946,13 @@ class MpdFrontWindow(Gtk.ApplicationWindow):
         self.playlist_list.select_row(self.playlist_list.get_row_at_index(self.playlist_last_selected))
         self.browser_box.columns[0].select_row(self.browser_box.columns[0].get_row_at_index(0))
 
+        ## Setup callbacks
+        self.key_callbacks = {
+
+        }
+
     ##  BEGIN EVENT HANDLERS
-    def key_pressed(self, controller, keyval, keycode, state):
+    def on_key_pressed(self, controller, keyval, keycode, state):
         """
         Keypress handler for toplevel widget. Responds to global keys for playback control.
         """
@@ -876,22 +970,24 @@ class MpdFrontWindow(Gtk.ApplicationWindow):
                 self.close()
             elif keyval == Constants.keyval_play or keyval == ord(self.config.get("keys", "playpause")):
                 log.debug("PLAY/PAUSE")
-                self.app.mpd_cmd.play_or_pause()
+                self.cmd_queue.put(QueueMessage(type=Constants.message_type_command, item="toggle"))
             elif keyval == ord(self.config.get("keys", "stop")):
                 log.debug("STOP")
-                self.app.mpd_cmd.stop()
+                self.cmd_queue.put(QueueMessage(type=Constants.message_type_command, item="stop"))
             elif keyval == Constants.keyval_previous or keyval == ord(self.config.get("keys", "previous")):
                 log.debug("PREVIOUS")
-                self.app.mpd_cmd.previous()
+                self.cmd_queue.put(QueueMessage(type=Constants.message_type_command, item="previous"))
             elif keyval == Constants.keyval_next or keyval == ord(self.config.get("keys", "next")):
                 log.debug("NEXT")
-                self.app.mpd_cmd.next()
+                self.cmd_queue.put(QueueMessage(type=Constants.message_type_command, item="next"))
             elif keyval == Constants.keyval_rewind or keyval == ord(self.config.get("keys", "rewind")):
                 log.debug("REWIND")
-                self.app.mpd_cmd.seekcur("-5")
+                #self.app.mpd_cmd.seekcur("-5")
+                self.cmd_queue.put(QueueMessage(type=Constants.message_type_command, item="seekcur", data=["-5"]))
             elif keyval == Constants.keyval_cue or keyval == ord(self.config.get("keys", "cue")):
                 log.debug("CUE")
-                self.app.mpd_cmd.seekcur("+5")
+                #self.app.mpd_cmd.seekcur("+5")
+                self.cmd_queue.put(QueueMessage(type=Constants.message_type_command, item="seekcur", data=["+5"]))
 
             elif keyval == ord(self.config.get("keys", "outputs")):
                 self.outputs_dialog = OutputsDialog(self, self.outputs_changed)
@@ -899,14 +995,12 @@ class MpdFrontWindow(Gtk.ApplicationWindow):
                 #self.outputs_dialog.destroy()
 
             elif keyval == ord(self.config.get("keys", "options")):
-                self.options_dialog = OptionsDialog(self, self.options_changed)
-                #response = self.options_dialog.run()
-                #self.options_dialog.destroy()
+                self.cmd_queue.put(QueueMessage(type=Constants.message_type_command, item="status"))
+                mpd_status = self.data_queue.get().get_data()
+                self.options_dialog = OptionsDialog(self, self.options_changed, mpd_status)
 
             elif keyval == ord(self.config.get("keys", "cardselect")):
                 self.cards_dialog = CardSelectDialog(self, self.soundcard_changed)
-                #response = self.cards_dialog.run()
-                #self.cards_dialog.destroy()
 
             elif keyval == ord(self.config.get("keys", "browser")):
                 ## Focus on the last selected row in the browser
@@ -988,23 +1082,6 @@ class MpdFrontWindow(Gtk.ApplicationWindow):
 
         elif keyval == ord(self.config.get("keys", "info")):
             self.browser_info_popup()
-
-    def playlist_key_pressed(self, controller, keyval, keycode, state):
-        """
-        Event handler for playlist box key presses
-        """
-        if keyval == Gdk.KEY_Return:
-            #log.debug("playlist key: ENTER")
-            self.edit_playlist()
-
-        elif keyval == ord(self.config.get("keys", "info")):
-            self.playlist_info_popup()
-        elif keyval == ord(self.config.get("keys", "moveup")):
-            self.playlist_moveup()
-        elif keyval == ord(self.config.get("keys", "movedown")):
-            self.playlist_movedown()
-        elif keyval == ord(self.config.get("keys", "delete")):
-            self.playlist_delete()
 
     def broswer_row_selected(self, listbox, row):
         """
@@ -1153,30 +1230,8 @@ class MpdFrontWindow(Gtk.ApplicationWindow):
             else:
                 add_item_name += self.browser_selected_items[i]['value'] + " "
         self.playlist_confirm_dialog = PlaylistConfirmDialog(parent=self, add_item_name=add_item_name)
-        self.playlist_confirm_dialog.connect('response', self.playlist_dialog_response)
+        self.playlist_confirm_dialog.connect('response', self.playlist_confirm_dialog_response)
         self.playlist_confirm_dialog.show()
-
-    def edit_playlist(self):
-        """
-        Displays dialog with playlist edit options. Performs task based on user input.
-        Play, move song up in playlist, down in playlist, delete from playlist.
-        """
-        song = self.playlist_list.get_selected_row().get_child().data
-        self.edit_playlist_dialog = PlaylistEditDialog(parent=self, song=song)
-        self.edit_playlist_dialog.connect('response', self.playlist_edit_response)
-        self.edit_playlist_dialog.show()
-
-    def playlist_info_popup(self):
-        """
-        Call SongInfoDialog to display the song data from the selected playlist row
-        """
-        song = self.playlist_list.get_selected_row().get_child().data
-        if song is None:
-            return
-        log.debug("song info: %s" % song)
-        dialog = SongInfoDialog(self, song)
-        #dialog.run()
-        #dialog.destroy()
 
     def browser_info_popup(self):
         """
@@ -1198,9 +1253,11 @@ class MpdFrontWindow(Gtk.ApplicationWindow):
         :param outputid: output ID from the button
         """
         if button.get_active():
-            self.app.mpd_cmd.enableoutput(outputid)
+            #self.app.mpd_cmd.enableoutput(outputid)
+            self.cmd_queue.put(QueueMessage(type=Constants.message_type_command, item="enableoutput", data=[outputid]))
         else:
-            self.app.mpd_cmd.disableoutput(outputid)
+            #self.app.mpd_cmd.disableoutput(outputid)
+            self.cmd_queue.put(QueueMessage(type=Constants.message_type_command, item="disableoutput", data=[outputid]))
         self.app.mpd_outputs = self.app.mpd_cmd.outputs()
 
     def options_changed(self, button, option):
@@ -1228,47 +1285,20 @@ class MpdFrontWindow(Gtk.ApplicationWindow):
             self.device_id = button.get_value_as_int()
         #self.playback_display.update()
 
-    def playlist_moveup(self):
-        index = self.playlist_list.get_selected_row().get_index()
-        song = self.playlist_list.get_selected_row().get_child().data
-        log.debug("moving song up 1: '%s'" % song['title'])
-        if index > 0:
-            index -= 1
-            self.app.mpd_cmd.moveid(song['id'], index)
-        self.playlist_last_selected = index
-        self.focus_on = "playlist"
-
-    def playlist_movedown(self):
-        index = self.playlist_list.get_selected_row().get_index()
-        song = self.playlist_list.get_selected_row().get_child().data
-        log.debug("moving song down 1: '%s'" % song['title'])
-        if index + 1 < len(self.playlist_list.liststore):
-            self.app.mpd_cmd.moveid(song['id'], index + 1)
-        self.playlist_last_selected = index+1
-        self.focus_on = "playlist"
-
-    def playlist_delete(self):
-        index = self.playlist_list.get_selected_row().get_index()
-        song = self.playlist_list.get_selected_row().get_child().data
-        log.debug("deleting song: '%s'" % song['title'])
-        index -= 1
-        if index < 0:
-            index = 0
-        self.app.mpd_cmd.deleteid(song['id'])
-        self.playlist_last_selected = index
-        self.focus_on = "playlist"
-
     ## New methods
-    def playlist_dialog_response(self, dialog, response):
+    def playlist_confirm_dialog_response(self, dialog, response):
         log.debug("dialog response: %s" % response)
         dialog.destroy()
         if response == 2:
             ## Clear list before adding for "replace"
-            self.app.mpd_cmd.clear()
+            #self.app.mpd_cmd.clear()
+            self.cmd_queue.put(QueueMessage(type=Constants.message_type_command, item="clear"))
         if response in (1, 2): ## Add or replace
             if self.browser_selected_items[-1]['type'] in ("song", "file"):
                 #log.debug("adding song: %s" % selected_items[-1]['data']['title'])
-                self.app.mpd_cmd.add(self.browser_selected_items[-1]['data']['file'])
+                #self.app.mpd_cmd.add(self.browser_selected_items[-1]['data']['file'])
+                self.cmd_queue.put(QueueMessage(type=Constants.message_type_command, item="add",
+                                                   data=[self.browser_selected_items[-1]['data']['file']]))
             elif self.browser_selected_items[-1]['type'] == "album":
                 #log.debug("adding album: %s" % selected_items[-1]['value'])
                 if self.browser_selected_items[-2]['type'] == "artist":
@@ -1288,7 +1318,7 @@ class MpdFrontWindow(Gtk.ApplicationWindow):
         else:
             self.mainpaned.set_position(self.props.default_height / 2)
 
-    def on_state_flags_changed(self, widget=None, flags=None):
+    def on_state_flags_changed(self, widget, flags):
         #log.debug("state flags: %s" % flags)
         if not self.initial_resized and (flags & Gtk.StateFlags.FOCUS_WITHIN):
             self.set_dividers()
@@ -1305,16 +1335,3 @@ class MpdFrontWindow(Gtk.ApplicationWindow):
         else:
             self.bottompaned.set_position(self.props.default_width/2)
         #self.set_current_albumart()
-
-    def playlist_edit_response(self, dialog, response):
-        if response == 1:
-            self.playlist_moveup()
-        elif response == 2:
-            self.playlist_movedown()
-        elif response == 3:
-            dialog.destroy()
-            self.playlist_delete()
-        elif response == 4:
-            song = self.playlist_list.get_selected_row().get_child().data
-            self.app.mpd_cmd.playid(song['id'])
-            dialog.destroy()

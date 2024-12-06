@@ -1,15 +1,16 @@
-import sys, time
+import queue
+import time
 import threading
 import logging
 import musicpd
-from .constants import Constants
+
+from . import Constants
+from .message import QueueMessage
 
 log = logging.getLogger(__name__)
 
-_RETRY_WAIT=1000
-
 class Client:
-    def __init__(self, host:str=None, port:int=None):
+    def __init__(self, host:str, port:int):
         if not host or not port:
             err_msg = "host or port not defined"
             log.error(err_msg)
@@ -26,6 +27,12 @@ class Client:
 
     def reconnect(self):
         try:
+            log.debug("attempting disconnect")
+            self.mpd.disconnect()
+        except Exception as e:
+            log.debug("diconnect failed: %s" % e)
+        try:
+            log.debug("attempting reconnect")
             self.mpd.connect()
             log.info("reconnected to mpd")
         except Exception as e:
@@ -43,25 +50,38 @@ class Client:
         :return:
         """
         try_reconnect = False
+        retries = 0
         while True:
+            if retries > 0:
+                log.debug("retry #%d try_reconnect: %s" % (retries, try_reconnect))
             if try_reconnect:
                 try:
                     self.reconnect()
                     try_reconnect = False
                 except Exception as e:
                     log.error("reconnect failed: %s" % e)
-                    time.sleep(_RETRY_WAIT)
+                    time.sleep(Constants.reconnect_retry_sleep_secs)
+                    try_reconnect = True
+                    retries += 1
                     continue
             try:
                 return callback(*args, **kwargs)
             except (musicpd.ConnectionError, BrokenPipeError, ConnectionResetError, ConnectionError,
                     ConnectionAbortedError, ConnectionRefusedError) as e:
-                log.error("command failed: %s" % e)
+                log.error("command failed, type: %s message: %s" % (type(e).__name__, e))
                 try_reconnect = True
-                time.sleep(_RETRY_WAIT)
+                time.sleep(Constants.reconnect_retry_sleep_secs)
+                continue
+            except musicpd.PendingCommandError as e:
+                log.error("PendingCommandError: %s" % e)
+                return []
             except Exception as e:
-                log.error("unhandled exception: %s" % e)
-                raise e
+                log.error("unhandled exception, type: %s message: %s" % (type(e).__name__, e))
+                return None
+            else:
+                log.debug("else pass")
+            finally:
+                retries += 1
 
     def list(self, *args, **kwargs):
         return self.run_command(self.mpd.list, *args, **kwargs)
@@ -144,6 +164,9 @@ class Client:
     def send_idle(self, *args, **kwargs):
         return self.run_command(self.mpd.send_idle, *args, **kwargs)
 
+    def fetch_idle(self, *args, **kwargs):
+        return self.run_command(self.mpd.fetch_idle, *args, **kwargs)
+
     def play_or_pause(self):
         """
         Check the player status, play if stopped, pause otherwise.
@@ -153,25 +176,8 @@ class Client:
         else:
             return self.pause()
 
-class UpdaterClient:
-    def __init__(self, host:str=None, port:int=None):
-        if not host or not port:
-            err_msg = "host or port not defined"
-            log.error(err_msg)
-            raise ValueError(err_msg)
-        try:
-            self.mpd = musicpd.MPDClient()
-            self.mpd.connect(host, port)
-            log.debug("connected to mpd %s:%d" % (host, port))
-        except Exception as e:
-            log.critical("could not connect to mpd %s:%d: %s" % (host, port, e))
-            raise e
-
-class IdleClientThread:
-    """
-    Connects to mpd and runs idle commands waiting for notification of state changes.
-    """
-    def __init__(self, host:str=None, port:int=None, queue=None):
+class ClientThread:
+    def __init__(self, host:str, port:int, queue:queue.Queue, name:str):
         if not host or not port or not queue:
             err_msg = "host, port, app, or queue not defined"
             log.error(err_msg)
@@ -179,85 +185,161 @@ class IdleClientThread:
         self.host = host
         self.port = port
         self.queue = queue
-        self.run_idle = True
-        self.run()
+        self.name = name
+        self.spawn()
 
-    def idle_thread(self):
+    def spawn(self):
+        try:
+            self.thread = threading.Thread(target=self.run, args=(), name=self.name, daemon=True)
+            self.thread.start()
+        except Exception as e:
+            log.critical("Could not spawn thread '%s': %s" % (self.name, e))
+            raise e
+        return self.thread
+
+    def run(self):
+        try:
+            self.mpd = Client(self.host, self.port)
+        except Exception as e:
+            log.error("client thread '%s' could not connect to host %s at port %d: %s" % (self.name, self.host, self.port, e))
+            raise e
+        log.debug("client thread '%s' connected to mpd %s:%d" % ((self.name, self.host, self.port)))
+
+        self.pre_run()
+        while True:
+            self.one_run()
+
+    def pre_run(self):
+        pass
+
+    def one_run(self):
+        pass
+
+class IdleClientThread(ClientThread):
+    """
+    Connects to mpd and runs idle commands waiting for notification of state changes.
+    """
+    def one_run(self):
         """
         Function that runs in the idle thread created by spawn_idle_thread().
         Listens for changes from MPD, using the idle command.
         Updates UI to idle()
         """
         try:
-            self.mpd = Client(self.host, self.port)
+            log.debug("sending idle")
+            self.mpd.send_idle()
+            log.debug("idle sent")
+            changes = self.mpd.fetch_idle()
+            log.debug("fetched idle")
         except Exception as e:
-            log.error("could not connect to host %s at port %d: %s" % (self.host, self.port, e))
-            raise e
-        log.debug("idle thread connected to mpd %s:%d" % (self.host, self.port))
+            log.error("idle failed: %s" % e)
+            return
 
-        while self.run_idle:
-            error = False
-            reconnect = False
-            try:
-                self.mpd.mpd.send_idle()
-                changes = self.mpd.mpd.fetch_idle()
-            except (musicpd.ConnectionError, BrokenPipeError) as e:
-                log.error("idle connection failed: %s" % e)
-                reconnect = True
-                error = True
-            except Exception as e:
-                log.error("idle failed: %s" % e)
-                error = True
-            if reconnect:
-                try:
-                    self.reconnect()
-                except (musicpd.ConnectionError, BrokenPipeError) as e:
-                    log.error("idle failed reconnect: %s" % e)
-                    time.sleep(RETRY_WAIT)
-                    error = True
-            if error:
-                log.error("idle thread connection error(s)")
-                continue
-            else:
-                log.debug("changes: %s" % changes)
-                playlist_refreshed = False
-                for c in changes:
-                    if c == "playlist" and not playlist_refreshed:
-                        log.debug("playlist changes")
+        else:
+            log.debug("changes: %s" % changes)
+            playlist_refreshed = False
+            if not changes or not isinstance(changes, list):
+                log.debug("changes not expected value/type")
+                return
+            for c in changes:
+                if c == "playlist" and not playlist_refreshed:
+                    log.debug("playlist changes")
+                    playlistinfo = self.mpd.playlistinfo()
+                    currentsong = self.mpd.currentsong()
+                    self.queue.put(QueueMessage(type=Constants.message_type_change, item="playlist",
+                                                data={"playlist": playlistinfo, "current": currentsong }))
+                    playlist_refreshed = True
+                elif c == "player":
+                    log.debug("player changes")
+                    status = self.mpd.status()
+                    currentsong = self.mpd.currentsong()
+                    self.queue.put(QueueMessage(type=Constants.message_type_change, item="player",
+                                                data={"status": status, "current": currentsong }))
+                    if not playlist_refreshed:
                         playlistinfo = self.mpd.playlistinfo()
-                        currentsong = self.mpd.currentsong()
-                        self.queue.put({ "type": "change", "item": "playlist", "playlist": playlistinfo, "current": currentsong })
+                        self.queue.put(QueueMessage(type=Constants.message_type_change, item="playlist",
+                                                    data={"playlist": playlistinfo, "current": currentsong }))
                         playlist_refreshed = True
-                    elif c == "player":
-                        log.debug("player changes")
-                        status = self.mpd.status()
-                        currentsong = self.mpd.currentsong()
-                        self.queue.put({ "type": "change", "item": "player", "status": status, "current": currentsong })
-                        if not playlist_refreshed:
-                            playlistinfo = self.mpd.playlistinfo()
-                            self.queue.put({"type": "change", "item": "playlist", "playlist": playlistinfo,
-                                            "current": currentsong})
-                            playlist_refreshed = True
-                    elif c == "database":
-                        log.debug("database changes")
-                        self.queue.put({ "type": "change", "item": "database" })
-                    elif c == "outputs":
-                        log.debug("outputs changes")
-                        self.queue.put({ "type": "change", "item": "outputs" })
-                    elif c == "mixer":
-                        log.debug("mixer changes")
-                        self.queue.put({ "type": "change", "item": "mixer" })
-                    else:
-                        log.info("Unhandled change: %s" % c)
+                elif c == "database":
+                    log.debug("database changes")
+                    self.queue.put(QueueMessage(type=Constants.message_type_change, item="database"))
+                elif c == "outputs":
+                    log.debug("outputs changes")
+                    self.queue.put(QueueMessage(type=Constants.message_type_change, item="outputs"))
+                elif c == "mixer":
+                    log.debug("mixer changes")
+                    self.queue.put(QueueMessage(type=Constants.message_type_change, item="mixer"))
+                else:
+                    log.info("Unhandled change: %s" % c)
 
-    def run(self):
-        """
-        Creates and starts the idle thread that listens for change events from MPD.
-        """
+class CommandClientThread(ClientThread):
+    """
+    Connects to mpd, waits on messages from the UI, and runs commands based on the messages.
+    """
+    def __init__(self, data_queue:queue.Queue, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.data_queue = data_queue
+
+    def pre_run(self):
+        self.cmd_callbacks = {
+            'toggle': self.mpd.play_or_pause,
+            'add': self.mpd.add,
+            'clear': self.mpd.clear,
+            'consume': self.mpd.consume,
+            'currentsong': self.mpd.currentsong,
+            'deleteid': self.mpd.deleteid,
+            'disableoutput': self.mpd.disableoutput,
+            'enableoutput': self.mpd.enableoutput,
+            'fetch_idle': self.mpd.fetch_idle,
+            'find': self.mpd.find,
+            'findadd': self.mpd.findadd,
+            'list': self.mpd.list,
+            'lsinfo': self.mpd.lsinfo,
+            'moveid': self.mpd.moveid,
+            'next': self.mpd.next,
+            'outputs': self.mpd.outputs,
+            'pause': self.mpd.pause,
+            'play': self.mpd.play,
+            'play_or_pause': self.mpd.play_or_pause,
+            'playid': self.mpd.playid,
+            'playlistinfo': self.mpd.playlistinfo,
+            'previous': self.mpd.previous,
+            'random': self.mpd.random,
+            'repeat': self.mpd.repeat,
+            'seekcur': self.mpd.seekcur,
+            'send_idle': self.mpd.send_idle,
+            'single': self.mpd.single,
+            'stats': self.mpd.stats,
+            'status': self.mpd_status,
+            'stop': self.mpd.stop,
+        }
+
+    def one_run(self):
         try:
-            idle_thread = threading.Thread(target=self.idle_thread, args=(), name="idleThread", daemon=True)
-            idle_thread.start()
+            log.debug("waiting for message")
+            msg = self.queue.get()
+            log.debug("message received, type: %s, item: %s, data: %s" % (msg.get_type(), msg.get_item(), msg.get_data()))
         except Exception as e:
-            log.critical("Could not spawn idle thread: %s" % e)
-            raise e
-        return True
+            log.error("error receiving message from queue: %e" % e)
+            return
+
+        if msg.get_type() == Constants.message_type_command:
+            log.debug("running command: %s" % msg.get_item())
+            try:
+                if msg.get_data():
+                    self.cmd_callbacks[msg.get_item()](*msg.get_data())
+                else:
+                    self.cmd_callbacks[msg.get_item()]()
+            except Exception as e:
+                log.error("error running command '%s': %s" % (msg.get_item(), e))
+                return
+        else:
+            log.debug("unhandled type: %s" % msg.get_type())
+
+    def get_command_response(self, callback):
+        r = callback()
+        log.debug("got response: %s" % r)
+        self.data_queue.put(QueueMessage(type=Constants.message_type_data, item="status", data=r))
+
+    def mpd_status(self):
+        self.get_command_response(self.mpd.status)

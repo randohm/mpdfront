@@ -22,6 +22,7 @@ class Constants:
     keyval_cue = 0x1008ff97
     keyval_previous = 0x1008ff16
     keyval_next = 0x1008ff17
+    #keyval_delete = 0x
 
     ## Rows for 1st column of browser
     browser_1st_column_rows = [
@@ -38,6 +39,10 @@ class Constants:
     message_type_change = "change"
     message_item_playlist = "playlist"
     message_item_player = "player"
+    message_type_command = "command"
+    message_type_data = "data"
 
-    check_thread_comms_interval = 330
-    playback_update_interval_play = 501
+    check_thread_comms_interval = 1000      ## milliseconds
+    playback_update_interval_play = 1000    ## milliseconds
+
+    reconnect_retry_sleep_secs = 1

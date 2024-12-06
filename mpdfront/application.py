@@ -1,7 +1,10 @@
 import time, os
 import logging
 import queue
+import configparser
 import gi
+
+from .message import QueueMessage
 from .ui import MpdFrontWindow
 from . import mpd
 from .constants import Constants
@@ -12,32 +15,39 @@ from gi.repository import Gtk, Gdk, GdkPixbuf, GObject, Pango, GLib, Gio
 log = logging.getLogger(__name__)
 
 class MpdFrontApp(Gtk.Application):
-    css_provider = None
-    mpd_client = None
-    mpd_idle_client = None
-    last_update_time = 0  ## Epoch time of last display update
-    last_update_offset = 0  ## Time offset into a song at the last display update
-
-    def __init__(self, config=None, css_file=None, *args, **kwargs):
+    """
+    Main application class for mpdfront.
+    """
+    def __init__(self, config:configparser, css_file:str=None, host:str=None, port:int=None, *args, **kwargs):
         if not config:
             err_msg = "config cannot be None"
-            log.error(err_msg)
+            log.critical(err_msg)
             raise ValueError(err_msg)
         super().__init__(*args, **kwargs)
         self.config = config
         self.css_file = css_file
         self.card_id = int(config.get("main", "sound_card"))
         self.device_id = int(config.get("main", "sound_device"))
-        self.host = config.get("main", "host")
-        self.port = int(config.get("main", "port"))
         self.idle_queue = queue.Queue()
+        self.cmd_queue = queue.Queue()
+        self.data_queue = queue.Queue()
+        if host:
+            self.host = host
+        else:
+            self.host = config.get("main", "host")
+        if port:
+            self.port = port
+        else:
+            self.port = int(config.get("main", "port"))
 
         self.connect('activate', self.on_activate)
         self.connect('shutdown', self.on_quit)
 
         try:
             self.mpd_cmd = mpd.Client(self.host, self.port)
-            self.mpd_idle = mpd.IdleClientThread(host=self.host, port=self.port, queue=self.idle_queue)
+            self.mpd_idle = mpd.IdleClientThread(host=self.host, port=self.port, queue=self.idle_queue, name="idleThread")
+            self.mpd_cmd_thread = mpd.CommandClientThread(host=self.host, port=self.port, queue=self.cmd_queue,
+                                                          data_queue=self.data_queue, name="cmdThread")
         except Exception as e:
             log.error("could not connect to mpd: %s" % e)
             raise e
@@ -58,7 +68,7 @@ class MpdFrontApp(Gtk.Application):
         self.thread_comms_timeout_id = GLib.timeout_add(Constants.playback_update_interval_play, self.refresh_playback)
 
     def on_activate(self, app):
-        self.window = MpdFrontWindow(application=self, config=self.config)
+        self.window = MpdFrontWindow(application=self, config=self.config, queue=self.cmd_queue, data_queue=self.data_queue)
         if self.css_file and os.path.isfile(self.css_file):
             log.debug("reading css file: %s" % self.css_file)
             self.css_provider = Gtk.CssProvider.new()
@@ -117,7 +127,7 @@ class MpdFrontApp(Gtk.Application):
                 DataCache.cache['Albums'][i] = {}
         return DataCache.cache['Albums'].keys()
 
-    def get_albums_by_artist(self, artist:str=None):
+    def get_albums_by_artist(self, artist:str):
         """
         Gets the list of albums by an artist from mpd, enters albums into db_cache if needed
         Args:
@@ -138,7 +148,7 @@ class MpdFrontApp(Gtk.Application):
                 DataCache.cache['Artists'][artist][i] = []
         return DataCache.cache['Artists'][artist]
 
-    def get_albums_by_albumartist(self, artist:str=None):
+    def get_albums_by_albumartist(self, artist:str):
         """
         Gets the list of albums by an albumartist from mpd, enters albums into db_cache if needed
         Args:
@@ -160,7 +170,7 @@ class MpdFrontApp(Gtk.Application):
                 DataCache.cache['Album Artists'][artist][i] = []
         return DataCache.cache['Album Artists'][artist]
 
-    def get_songs_by_album_by_artist(self, album:str=None, artist:str=None):
+    def get_songs_by_album_by_artist(self, album:str, artist:str):
         """
         Finds songs by album and artist.
         Args:
@@ -177,7 +187,7 @@ class MpdFrontApp(Gtk.Application):
                 DataCache.cache['Artists'][artist][album].append(i)
         return DataCache.cache['Artists'][artist][album]
 
-    def get_songs_by_album_by_genre(self, album:str=None, genre:str=None):
+    def get_songs_by_album_by_genre(self, album:str, genre:str):
         """
         Finds songs by album and artist.
         Args:
@@ -194,7 +204,7 @@ class MpdFrontApp(Gtk.Application):
                 DataCache.cache['Genres'][genre][album].append(i)
         return DataCache.cache['Genres'][genre][album]
 
-    def get_songs_by_album_by_albumartist(self, album:str=None, artist:str=None):
+    def get_songs_by_album_by_albumartist(self, album:str, artist:str):
         """
         Finds songs by album and albumartist.
         Args:
@@ -211,7 +221,7 @@ class MpdFrontApp(Gtk.Application):
                 DataCache.cache['Album Artists'][artist][album].append(i)
         return DataCache.cache['Album Artists'][artist][album]
 
-    def get_songs_by_album(self, album:str=None):
+    def get_songs_by_album(self, album:str):
         """
         Finds songs by album.
         Args:
@@ -242,7 +252,7 @@ class MpdFrontApp(Gtk.Application):
                 DataCache.cache['Genres'][i] = {}
         return DataCache.cache['Genres'].keys()
 
-    def get_albums_by_genre(self, genre:str=None):
+    def get_albums_by_genre(self, genre:str):
         """
         Gets the list of albums by genre from mpd, enters albums into db_cache if needed
 
@@ -265,7 +275,7 @@ class MpdFrontApp(Gtk.Application):
         Updates playlist and playback if needed.
         Updates time info and progress bar.
         """
-        mpd_status = self.mpd_cmd.status()
+        mpd_status = self.get_mpd_status()
         current_song = self.mpd_cmd.currentsong()
         self.window.playback_display.update(mpd_status, current_song, self.config.get("main", "music_dir"))
         return True
@@ -296,14 +306,30 @@ class MpdFrontApp(Gtk.Application):
         except Exception as e:
             return True
 
-        if msg and isinstance(msg, dict) and 'type' in msg.keys():
-            log.debug("processing queued message type: %s" % msg['type'])
-            if msg['type'] == Constants.message_type_change:
-                if msg['item'] == Constants.message_item_playlist:
-                    self.window.playlist_list.update(msg['playlist'], msg['current'])
-                if msg['item'] == Constants.message_item_player:
-                    self.window.playback_display.update(msg['status'], msg['current'], self.config.get("main", "music_dir"))
+        if msg and isinstance(msg, QueueMessage):
+            log.debug("processing queued message type: %s, item: %s" % (msg.get_type(), msg.get_item()))
+            log.debug("data: %s" % msg.get_data())
+            if msg.get_type() == Constants.message_type_change:
+                if msg.get_item() == Constants.message_item_playlist:
+                    self.window.playlist_list.update(msg.get_data()['playlist'], msg.get_data()['current'])
+                if msg.get_item() == Constants.message_item_player:
+                    self.window.playback_display.update(msg.get_data()['status'], msg.get_data()['current'],
+                                                        self.config.get("main", "music_dir"))
         return True
+
+    def get_mpd_response(self, type:str, item:str):
+        if not type or not item:
+            raise ValueError("type, item is a required argument")
+        self.cmd_queue.put(QueueMessage(type=type, item=item))
+        msg = self.data_queue.get()
+        if msg and isinstance(msg, QueueMessage) and msg.get_type() == Constants.message_type_data and msg.get_item() == item:
+            return msg.get_data()
+        else:
+            log.error("message mismatch. type: %s, item: %s" % (msg.get_type(), msg.get_item()))
+            return None
+
+    def get_mpd_status(self):
+        return self.get_mpd_response(type=Constants.message_type_command, item="status")
 
 class DataCache():
     cache = {

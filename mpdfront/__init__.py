@@ -51,7 +51,7 @@ def main():
 
     ## Create App object and run it
     try:
-        app = MpdFrontApp(config=config, css_file=args.css, application_id=Constants.application_id)
+        app = MpdFrontApp(config=config, css_file=args.css, application_id=Constants.application_id, host=args.host, port=args.port)
     except Exception as e:
         sys.stderr.write("could not create application: %s\n" % e)
         sys.exit(2)
