@@ -1,14 +1,12 @@
-import time, os
+import os
 import logging
 import queue
 import configparser
-from csv import excel
-
 import gi
 
+from . import mpd
 from .message import QueueMessage
 from .ui import MpdFrontWindow
-from . import mpd
 from .constants import Constants
 
 gi.require_version("Gtk", "4.0")
@@ -41,10 +39,6 @@ class MpdFrontApp(Gtk.Application):
             self.port = port
         else:
             self.port = int(config.get("main", "port"))
-
-        self.connect('activate', self.on_activate)
-        self.connect('shutdown', self.on_quit)
-
         try:
             self.mpd_cmd = mpd.Client(self.host, self.port)
             self.mpd_idle = mpd.IdleClientThread(host=self.host, port=self.port, queue=self.idle_queue, name="idleThread")
@@ -68,6 +62,9 @@ class MpdFrontApp(Gtk.Application):
 
         self.thread_comms_timeout_id = GLib.timeout_add(Constants.check_thread_comms_interval, self.idle_thread_comms_handler)
         self.thread_comms_timeout_id = GLib.timeout_add(Constants.playback_update_interval_play, self.refresh_playback)
+
+        self.connect('activate', self.on_activate)
+        self.connect('shutdown', self.on_quit)
 
     def on_activate(self, app):
         self.window = MpdFrontWindow(application=self, config=self.config, queue=self.cmd_queue, data_queue=self.data_queue)
