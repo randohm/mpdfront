@@ -5,7 +5,7 @@ formatters:
 handlers:
   console:
     class: logging.StreamHandler
-    level: INFO
+    level: DEBUG
     formatter: simple
     stream: ext://sys.stderr
 loggers:
@@ -25,6 +25,10 @@ loggers:
     level: INFO
     handlers: [console]
     propagate: no
+  musicpd:
+    level: INFO
+    handlers: [console]
+    propagate: no
 root:
-  level: ERROR
+  level: INFO
   handlers: [console]
