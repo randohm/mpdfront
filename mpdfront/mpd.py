@@ -286,7 +286,7 @@ class CommandClientThread(ClientThread):
             'add': self.mpd.add,
             'clear': self.mpd.clear,
             'consume': self.mpd.consume,
-            'currentsong': self.mpd.currentsong,
+            'currentsong': self.mpd_currentsong,
             'deleteid': self.mpd.deleteid,
             'disableoutput': self.mpd.disableoutput,
             'enableoutput': self.mpd.enableoutput,
@@ -297,19 +297,19 @@ class CommandClientThread(ClientThread):
             'lsinfo': self.mpd.lsinfo,
             'moveid': self.mpd.moveid,
             'next': self.mpd.next,
-            'outputs': self.mpd.outputs,
+            'outputs': self.mpd_outputs,
             'pause': self.mpd.pause,
             'play': self.mpd.play,
             'play_or_pause': self.mpd.play_or_pause,
             'playid': self.mpd.playid,
-            'playlistinfo': self.mpd.playlistinfo,
+            'playlistinfo': self.mpd_playlistinfo,
             'previous': self.mpd.previous,
             'random': self.mpd.random,
             'repeat': self.mpd.repeat,
             'seekcur': self.mpd.seekcur,
             'send_idle': self.mpd.send_idle,
             'single': self.mpd.single,
-            'stats': self.mpd.stats,
+            'stats': self.mpd_stats,
             'status': self.mpd_status,
             'stop': self.mpd.stop,
         }
@@ -336,10 +336,22 @@ class CommandClientThread(ClientThread):
         else:
             log.debug("unhandled type: %s" % msg.get_type())
 
-    def get_command_response(self, callback):
+    def get_command_response(self, callback, item):
         r = callback()
         log.debug("got response: %s" % r)
-        self.data_queue.put(QueueMessage(type=Constants.message_type_data, item="status", data=r))
+        self.data_queue.put(QueueMessage(type=Constants.message_type_data, item=item, data=r))
 
     def mpd_status(self):
-        self.get_command_response(self.mpd.status)
+        self.get_command_response(self.mpd.status, item="status")
+
+    def mpd_currentsong(self):
+        self.get_command_response(self.mpd.currentsong, item="currentsong")
+
+    def mpd_playlistinfo(self):
+        self.get_command_response(self.mpd.playlistinfo, item="playlistinfo")
+
+    def mpd_stats(self):
+        self.get_command_response(self.mpd.stats, item="stats")
+
+    def mpd_outputs(self):
+        self.get_command_response(self.mpd.outputs, item="outputs")

@@ -2,6 +2,8 @@ import time, os
 import logging
 import queue
 import configparser
+from csv import excel
+
 import gi
 
 from .message import QueueMessage
@@ -52,9 +54,9 @@ class MpdFrontApp(Gtk.Application):
             log.error("could not connect to mpd: %s" % e)
             raise e
 
-        self.mpd_stats = self.mpd_cmd.stats()
+        self.mpd_stats = self.get_mpd_stats()
         log.debug("mpd stats: %s" % self.mpd_stats)
-        self.mpd_outputs = self.mpd_cmd.outputs()
+        self.mpd_outputs = self.get_mpd_outputs()
         log.debug("mpd outputs: %s" % self.mpd_outputs)
 
         # initialize cache
@@ -64,7 +66,7 @@ class MpdFrontApp(Gtk.Application):
         self.get_genres()
         self.get_files_list()
 
-        self.thread_comms_timeout_id = GLib.timeout_add(Constants.check_thread_comms_interval, self.thread_comms_handler)
+        self.thread_comms_timeout_id = GLib.timeout_add(Constants.check_thread_comms_interval, self.idle_thread_comms_handler)
         self.thread_comms_timeout_id = GLib.timeout_add(Constants.playback_update_interval_play, self.refresh_playback)
 
     def on_activate(self, app):
@@ -276,7 +278,7 @@ class MpdFrontApp(Gtk.Application):
         Updates time info and progress bar.
         """
         mpd_status = self.get_mpd_status()
-        current_song = self.mpd_cmd.currentsong()
+        current_song = self.get_mpd_currentsong()
         self.window.playback_display.update(mpd_status, current_song, self.config.get("main", "music_dir"))
         return True
 
@@ -297,7 +299,7 @@ class MpdFrontApp(Gtk.Application):
                 rows.append({'type': 'file', 'value': filename, 'data': finfo})
         return rows
 
-    def thread_comms_handler(self):
+    def idle_thread_comms_handler(self):
         msg = None
         try:
             if not self.idle_queue.empty():
@@ -320,16 +322,32 @@ class MpdFrontApp(Gtk.Application):
     def get_mpd_response(self, type:str, item:str):
         if not type or not item:
             raise ValueError("type, item is a required argument")
-        self.cmd_queue.put(QueueMessage(type=type, item=item))
-        msg = self.data_queue.get()
-        if msg and isinstance(msg, QueueMessage) and msg.get_type() == Constants.message_type_data and msg.get_item() == item:
-            return msg.get_data()
-        else:
-            log.error("message mismatch. type: %s, item: %s" % (msg.get_type(), msg.get_item()))
+        try:
+            self.cmd_queue.put(QueueMessage(type=type, item=item))
+            msg = self.data_queue.get()
+            if msg and isinstance(msg, QueueMessage) and msg.get_type() == Constants.message_type_data and msg.get_item() == item:
+                return msg.get_data()
+            else:
+                log.error("message mismatch. type: %s, item: %s" % (msg.get_type(), msg.get_item()))
+                return None
+        except Exception as e:
+            log.error("error sending/getting data from mpd: %s" % e)
             return None
 
     def get_mpd_status(self):
         return self.get_mpd_response(type=Constants.message_type_command, item="status")
+
+    def get_mpd_stats(self):
+        return self.get_mpd_response(type=Constants.message_type_command, item="stats")
+
+    def get_mpd_currentsong(self):
+        return self.get_mpd_response(type=Constants.message_type_command, item="currentsong")
+
+    def get_mpd_playlistinfo(self):
+        return self.get_mpd_response(type=Constants.message_type_command, item="playlistinfo")
+
+    def get_mpd_outputs(self):
+        return self.get_mpd_response(type=Constants.message_type_command, item="outputs")
 
 class DataCache():
     cache = {

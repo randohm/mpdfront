@@ -361,13 +361,13 @@ class PlaybackDisplay(Gtk.Box):
         self.sound_device = sound_device
         self.set_name("playback-display")
 
-        song_display_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
-        song_display_box.set_hexpand(True)
-        song_display_box.set_vexpand(True)
-        playback_info_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-        playback_info_box.set_hexpand(True)
-        playback_info_box.set_vexpand(True)
-        song_display_box.append(playback_info_box)
+        self.song_display_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
+        self.song_display_box.set_hexpand(True)
+        self.song_display_box.set_vexpand(True)
+        self.playback_info_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        self.playback_info_box.set_hexpand(False)
+        self.playback_info_box.set_vexpand(False)
+        self.song_display_box.append(self.playback_info_box)
 
         ## Current album art
         self.current_albumart = Gtk.Picture()
@@ -375,8 +375,8 @@ class PlaybackDisplay(Gtk.Box):
         self.current_albumart.set_halign(Gtk.Align.END)
         self.current_albumart.set_vexpand(True)
         self.current_albumart.set_hexpand(True)
-        song_display_box.append(self.current_albumart)
-        self.append(song_display_box)
+        self.song_display_box.append(self.current_albumart)
+        self.append(self.song_display_box)
 
         # song title label
         self.current_title_label = Gtk.Label(label=" ")
@@ -386,6 +386,7 @@ class PlaybackDisplay(Gtk.Box):
         self.current_title_label.set_valign(Gtk.Align.START)
         self.current_title_label.set_wrap(True)
         self.current_title_label.set_hexpand(False)
+        self.current_title_label.set_vexpand(False)
         self.current_title_label.set_justify(Gtk.Justification.LEFT)
 
         # artist label
@@ -396,6 +397,7 @@ class PlaybackDisplay(Gtk.Box):
         self.current_artist_label.set_ellipsize(Pango.EllipsizeMode.END)
         self.current_artist_label.set_wrap(False)
         self.current_artist_label.set_hexpand(False)
+        self.current_artist_label.set_vexpand(False)
         self.current_artist_label.set_justify(Gtk.Justification.LEFT)
 
         # album label
@@ -406,6 +408,7 @@ class PlaybackDisplay(Gtk.Box):
         self.current_album_label.set_ellipsize(Pango.EllipsizeMode.END)
         self.current_album_label.set_wrap(False)
         self.current_album_label.set_hexpand(False)
+        self.current_album_label.set_vexpand(False)
         self.current_album_label.set_justify(Gtk.Justification.LEFT)
 
         # time label
@@ -415,6 +418,8 @@ class PlaybackDisplay(Gtk.Box):
         self.current_time_label.set_valign(Gtk.Align.END)
         self.current_time_label.set_wrap(True)
         self.current_time_label.set_hexpand(False)
+        self.current_time_label.set_vexpand(False)
+        self.current_time_label.set_justify(Gtk.Justification.LEFT)
 
         # stats1 label
         self.stats1_label = Gtk.Label(label=" ")
@@ -422,7 +427,8 @@ class PlaybackDisplay(Gtk.Box):
         self.stats1_label.set_halign(Gtk.Align.START)
         self.stats1_label.set_valign(Gtk.Align.END)
         self.stats1_label.set_wrap(True)
-        self.stats1_label.set_hexpand(True)
+        self.stats1_label.set_hexpand(False)
+        self.stats1_label.set_vexpand(False)
         self.stats1_label.set_justify(Gtk.Justification.LEFT)
 
         # stats2 label
@@ -431,16 +437,17 @@ class PlaybackDisplay(Gtk.Box):
         self.stats2_label.set_halign(Gtk.Align.START)
         self.stats2_label.set_valign(Gtk.Align.END)
         self.stats2_label.set_wrap(True)
-        self.stats2_label.set_hexpand(True)
+        self.stats2_label.set_hexpand(False)
+        self.stats2_label.set_vexpand(False)
         self.stats2_label.set_justify(Gtk.Justification.LEFT)
 
         ## Add labels to playback grid
-        playback_info_box.append(self.current_title_label)
-        playback_info_box.append(self.current_artist_label)
-        playback_info_box.append(self.current_album_label)
-        playback_info_box.append(self.current_time_label)
-        playback_info_box.append(self.stats1_label)
-        playback_info_box.append(self.stats2_label)
+        self.playback_info_box.append(self.current_title_label)
+        self.playback_info_box.append(self.current_artist_label)
+        self.playback_info_box.append(self.current_album_label)
+        self.playback_info_box.append(self.current_time_label)
+        self.playback_info_box.append(self.stats1_label)
+        self.playback_info_box.append(self.stats2_label)
 
         ## Song progress bar
         self.song_progress = Gtk.LevelBar()
@@ -924,7 +931,9 @@ class MpdFrontWindow(Gtk.ApplicationWindow):
         self.playback_display = PlaybackDisplay(parent=self, sound_card=self.config.get("main", "sound_card"),
                                                 sound_device=self.config.get("main", "sound_device"))
         self.bottompaned.set_start_child(self.playback_display)
-        self.playback_display.update(self.app.get_mpd_status(), self.app.mpd_cmd.currentsong(), config.get("main", "music_dir"))
+        mpd_status = self.app.get_mpd_status()
+        currentsong = self.app.get_mpd_currentsong()
+        self.playback_display.update(mpd_status, currentsong, config.get("main", "music_dir"))
 
         ## Setup playlist
         self.playlist_list = PlaylistDisplay(parent=self)
@@ -933,7 +942,7 @@ class MpdFrontWindow(Gtk.ApplicationWindow):
         self.playlist_scroll.set_hexpand(True)
         self.playlist_scroll.set_child(self.playlist_list)
         self.bottompaned.set_end_child(self.playlist_scroll)
-        self.playlist_list.update(self.app.mpd_cmd.playlistinfo(), self.app.mpd_cmd.currentsong())
+        self.playlist_list.update(self.app.get_mpd_playlistinfo(), currentsong)
 
         ## Set event handlers
         self.connect("destroy", self.close)
@@ -1104,7 +1113,6 @@ class MpdFrontWindow(Gtk.ApplicationWindow):
                         rows.append({'type': 'albumartist', 'value': a, 'data': None})
                     self.browser_box.set_column_data(listbox.index + 1, rows)
                     self.browser_box.columns[listbox.index + 1].set_sort_func(listbox_cmp_filtered, None, False)
-
                 elif value == "Artists":
                     artists = self.app.get_artists()
                     #log.debug("artists: %s" % artists)
@@ -1113,7 +1121,6 @@ class MpdFrontWindow(Gtk.ApplicationWindow):
                         rows.append({'type': 'artist', 'value': a, 'data': None})
                     self.browser_box.set_column_data(listbox.index + 1, rows)
                     self.browser_box.columns[listbox.index + 1].set_sort_func(listbox_cmp_filtered, None, False)
-
                 elif value == "Albums":
                     albums = self.app.get_albums()
                     rows = []
@@ -1121,7 +1128,6 @@ class MpdFrontWindow(Gtk.ApplicationWindow):
                         rows.append({'type': 'album', 'value': a, 'data': None})
                     self.browser_box.set_column_data(listbox.index + 1, rows)
                     self.browser_box.columns[listbox.index + 1].set_sort_func(listbox_cmp_filtered, None, False)
-
                 elif value == "Genres":
                     genres = self.app.get_genres()
                     rows = []
@@ -1129,7 +1135,6 @@ class MpdFrontWindow(Gtk.ApplicationWindow):
                         rows.append({'type': 'genre', 'value': g, 'data': None})
                     self.browser_box.set_column_data(listbox.index + 1, rows)
                     self.browser_box.columns[listbox.index + 1].set_sort_func(listbox_cmp, None, False)
-
                 elif value == "Files":
                     files = self.app.get_files_list()
                     #log.debug("files: %s" % files)
@@ -1141,10 +1146,8 @@ class MpdFrontWindow(Gtk.ApplicationWindow):
                                 {'type': f2['type'], 'value': f['value'] + "/" + f2['value'], 'data': f2['data'], })
                     self.browser_box.set_column_data(listbox.index + 1, rows)
                     self.browser_box.columns[listbox.index + 1].set_sort_func(listbox_cmp, None, False)
-
                 else:
                     self.browser_box.set_column_data(listbox.index + 1, [])
-
             elif metatype == "albumartist":
                 albums = self.app.get_albums_by_albumartist(value)
                 #log.debug("albums: %s" % albums)
@@ -1153,7 +1156,6 @@ class MpdFrontWindow(Gtk.ApplicationWindow):
                     rows.append({'type': 'album', 'value': a, 'data': None})
                 self.browser_box.set_column_data(listbox.index + 1, rows)
                 self.browser_box.columns[listbox.index + 1].set_sort_func(listbox_cmp, None, False)
-
             elif metatype == "artist":
                 albums = self.app.get_albums_by_artist(value)
                 #log.debug("albums: %s" % albums)
@@ -1162,7 +1164,6 @@ class MpdFrontWindow(Gtk.ApplicationWindow):
                     rows.append({'type': 'album', 'value': a, 'data': None})
                 self.browser_box.set_column_data(listbox.index + 1, rows)
                 self.browser_box.columns[listbox.index + 1].set_sort_func(listbox_cmp, None, False)
-
             elif metatype == "genre":
                 albums = self.app.get_albums_by_genre(value)
                 #log.debug("albums: %s" % albums)
@@ -1171,7 +1172,6 @@ class MpdFrontWindow(Gtk.ApplicationWindow):
                     rows.append({'type': 'album', 'value': a, 'data': None})
                 self.browser_box.set_column_data(listbox.index + 1, rows)
                 self.browser_box.columns[listbox.index + 1].set_sort_func(listbox_cmp, None, False)
-
             elif metatype == "album":
                 selected_items = self.browser_box.get_selected_rows()
                 #log.debug("selected items: %s" % selected_items)
@@ -1181,16 +1181,12 @@ class MpdFrontWindow(Gtk.ApplicationWindow):
                 songs = None
                 if last_type == "albumartist":
                     songs = self.app.get_songs_by_album_by_albumartist(value, last_value)
-
                 elif last_type == "artist":
                     songs = self.app.get_songs_by_album_by_artist(value, last_value)
-
                 elif last_type == "category":
                     songs = self.app.get_songs_by_album(value)
-
                 elif last_type == "genre":
                     songs = self.app.get_songs_by_album_by_genre(value, last_value)
-
                 rows = []
                 if songs:
                     for s in songs:
@@ -1204,7 +1200,6 @@ class MpdFrontWindow(Gtk.ApplicationWindow):
                             rows.append({'type': 'song', 'value': os.path.basename(s['file']), 'data': s})
                 self.browser_box.set_column_data(listbox.index + 1, rows)
                 self.browser_box.columns[listbox.index + 1].set_sort_func(listbox_cmp_by_track, None, False)
-
             elif metatype == "directory":
                 files = self.app.get_files_list(child.data['dir'])
                 rows = []
@@ -1213,6 +1208,7 @@ class MpdFrontWindow(Gtk.ApplicationWindow):
                     rows.append(f)
                 self.browser_box.set_column_data(listbox.index + 1, rows)
                 self.browser_box.columns[listbox.index + 1].set_sort_func(listbox_cmp, None, False)
+
     ##  END EVENT HANDLERS
 
     def add_to_playlist(self):
@@ -1258,7 +1254,7 @@ class MpdFrontWindow(Gtk.ApplicationWindow):
         else:
             #self.app.mpd_cmd.disableoutput(outputid)
             self.cmd_queue.put(QueueMessage(type=Constants.message_type_command, item="disableoutput", data=[outputid]))
-        self.app.mpd_outputs = self.app.mpd_cmd.outputs()
+        self.app.mpd_outputs = self.app.get_mpd_outputs()
 
     def options_changed(self, button, option):
         """
@@ -1267,13 +1263,17 @@ class MpdFrontWindow(Gtk.ApplicationWindow):
         :param option: name of the option to change
         """
         if option == "consume":
-            self.app.mpd_cmd.consume(int(button.get_active()))
+            #self.app.mpd_cmd.consume(int(button.get_active()))
+            self.cmd_queue.put(QueueMessage(type=Constants.message_type_command, item="consume", data=[int(button.get_active())]))
         elif option == "random":
-            self.app.mpd_cmd.random(int(button.get_active()))
+            #self.app.mpd_cmd.random(int(button.get_active()))
+            self.cmd_queue.put(QueueMessage(type=Constants.message_type_command, item="random", data=[int(button.get_active())]))
         elif option == "repeat":
-            self.app.mpd_cmd.repeat(int(button.get_active()))
+            #self.app.mpd_cmd.repeat(int(button.get_active()))
+            self.cmd_queue.put(QueueMessage(type=Constants.message_type_command, item="repeat", data=[int(button.get_active())]))
         elif option == "single":
-            self.app.mpd_cmd.single(int(button.get_active()))
+            #self.app.mpd_cmd.single(int(button.get_active()))
+            self.cmd_queue.put(QueueMessage(type=Constants.message_type_command, item="single", data=[int(button.get_active())]))
         else:
             log.info("unhandled option: %s" % option)
 
@@ -1295,21 +1295,34 @@ class MpdFrontWindow(Gtk.ApplicationWindow):
             self.cmd_queue.put(QueueMessage(type=Constants.message_type_command, item="clear"))
         if response in (1, 2): ## Add or replace
             if self.browser_selected_items[-1]['type'] in ("song", "file"):
-                #log.debug("adding song: %s" % selected_items[-1]['data']['title'])
+                log.debug("adding song: %s" % self.browser_selected_items[-1]['data']['title'])
                 #self.app.mpd_cmd.add(self.browser_selected_items[-1]['data']['file'])
                 self.cmd_queue.put(QueueMessage(type=Constants.message_type_command, item="add",
                                                    data=[self.browser_selected_items[-1]['data']['file']]))
             elif self.browser_selected_items[-1]['type'] == "album":
-                #log.debug("adding album: %s" % selected_items[-1]['value'])
+                log.debug("adding album: %s" % self.browser_selected_items[-1]['value'])
                 if self.browser_selected_items[-2]['type'] == "artist":
-                    self.app.mpd_cmd.findadd("artist", self.browser_selected_items[-2]['value'], "album",
-                                             self.browser_selected_items[-1]['value'])
+                    log.debug("adding album by artist: %s" % self.browser_selected_items[-2]['value'])
+                    #self.app.mpd_cmd.findadd("artist", self.browser_selected_items[-2]['value'], "album", self.browser_selected_items[-1]['value'])
+                    self.cmd_queue.put(QueueMessage(type=Constants.message_type_command, item="findadd",
+                                                    data=["artist", self.browser_selected_items[-2]['value'], "album",
+                                                          self.browser_selected_items[-1]['value']]))
                 elif self.browser_selected_items[-2]['type'] == "albumartist":
-                    self.app.mpd_cmd.findadd("albumartist", self.browser_selected_items[-2]['value'], "album",
-                                     self.browser_selected_items[-1]['value'])
+                    log.debug("adding album by albumartist: %s" % self.browser_selected_items[-2]['value'])
+                    #self.app.mpd_cmd.findadd("albumartist", self.browser_selected_items[-2]['value'], "album", self.browser_selected_items[-1]['value'])
+                    self.cmd_queue.put(QueueMessage(type=Constants.message_type_command, item="findadd",
+                                                    data=["albumartist", self.browser_selected_items[-2]['value'],
+                                                          "album", self.browser_selected_items[-1]['value']]))
                 elif self.browser_selected_items[-2]['type'] == "genre":
-                    self.app.mpd_cmd.findadd("genre", self.browser_selected_items[-2]['value'], "album",
-                                             self.browser_selected_items[-1]['value'])
+                    log.debug("adding album by genre: %s" % self.browser_selected_items[-2]['value'])
+                    #self.app.mpd_cmd.findadd("genre", self.browser_selected_items[-2]['value'], "album", self.browser_selected_items[-1]['value'])
+                    self.cmd_queue.put(QueueMessage(type=Constants.message_type_command, item="findadd",
+                                                    data=["genre", self.browser_selected_items[-2]['value'], "album",
+                                                          self.browser_selected_items[-1]['value']]))
+                else:
+                    log.error("unhandled type 2: %s" % self.browser_selected_items[-2]['type'])
+            else:
+                log.error("unhandled type 1: %s" % self.browser_selected_items[-1]['type'])
 
     def on_mainpaned_show(self, widget, user_data):
         log.debug("showed mainpaned, height: %d, %s" % (self.get_height(), user_data))
