@@ -3,8 +3,6 @@ class QueueMessage:
     _item = ""
     _data = ""
     def __init__(self, type:str, item:str, data=None):
-        if not type or not item:
-            raise ValueError("type, item are required arguments")
         self._type = type
         self._item = item
         self._data = data

@@ -4,7 +4,7 @@ import threading
 import logging
 import musicpd
 
-from . import Constants
+from . import Constants, data
 from .message import QueueMessage
 
 log = logging.getLogger(__name__)
@@ -276,9 +276,10 @@ class CommandClientThread(ClientThread):
     """
     Connects to mpd, waits on messages from the UI, and runs commands based on the messages.
     """
-    def __init__(self, data_queue:queue.Queue, *args, **kwargs):
+    def __init__(self, data_queue:queue.Queue, lock:threading.Lock, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.data_queue = data_queue
+        self.thread_lock = lock
 
     def pre_run(self):
         self.cmd_callbacks = {
@@ -286,14 +287,14 @@ class CommandClientThread(ClientThread):
             'add': self.mpd.add,
             'clear': self.mpd.clear,
             'consume': self.mpd.consume,
-            'currentsong': self.mpd_currentsong,
+            'currentsong': self.load_mpd_currentsong,
             'deleteid': self.mpd.deleteid,
             'disableoutput': self.mpd.disableoutput,
             'enableoutput': self.mpd.enableoutput,
             'fetch_idle': self.mpd.fetch_idle,
-            'find': self.mpd.find,
-            'findadd': self.mpd.findadd,
-            'list': self.mpd.list,
+            'find': self.mpd_find,
+            'findadd': self.mpd_findadd,
+            'list': self.mpd_list,
             'lsinfo': self.mpd.lsinfo,
             'moveid': self.mpd.moveid,
             'next': self.mpd.next,
@@ -310,7 +311,7 @@ class CommandClientThread(ClientThread):
             'send_idle': self.mpd.send_idle,
             'single': self.mpd.single,
             'stats': self.mpd_stats,
-            'status': self.mpd_status,
+            'status': self.load_mpd_status,
             'stop': self.mpd.stop,
         }
 
@@ -336,22 +337,37 @@ class CommandClientThread(ClientThread):
         else:
             log.debug("unhandled type: %s" % msg.get_type())
 
-    def get_command_response(self, callback, item):
-        r = callback()
+    def get_command_response(self, callback, item:str, *args):
+        r = callback(*args)
         log.debug("got response: %s" % r)
         self.data_queue.put(QueueMessage(type=Constants.message_type_data, item=item, data=r))
 
-    def mpd_status(self):
-        self.get_command_response(self.mpd.status, item="status")
+    def load_mpd_status(self):
+        #self.get_command_response(self.mpd.status, "status")
+        self.thread_lock.acquire()
+        data.mpd_status = self.mpd.status()
+        self.thread_lock.release()
+        log.debug("mpd status: %s" % data.mpd_status)
 
-    def mpd_currentsong(self):
-        self.get_command_response(self.mpd.currentsong, item="currentsong")
+    def load_mpd_currentsong(self):
+        #self.get_command_response(self.mpd.currentsong, "currentsong")
+        data.mpd_currentsong = self.mpd.currentsong()
+        log.debug("mpd status: %s" % data.mpd_currentsong)
 
     def mpd_playlistinfo(self):
-        self.get_command_response(self.mpd.playlistinfo, item="playlistinfo")
+        self.get_command_response(self.mpd.playlistinfo, "playlistinfo")
 
     def mpd_stats(self):
-        self.get_command_response(self.mpd.stats, item="stats")
+        self.get_command_response(self.mpd.stats, "stats")
 
     def mpd_outputs(self):
-        self.get_command_response(self.mpd.outputs, item="outputs")
+        self.get_command_response(self.mpd.outputs, "outputs")
+
+    def mpd_list(self, *args):
+        self.get_command_response(self.mpd.list, "list", *args)
+
+    def mpd_find(self, *args):
+        self.get_command_response(self.mpd.find, "find", *args)
+
+    def mpd_findadd(self, *args):
+        self.get_command_response(self.mpd.findadd, "findadd", *args)

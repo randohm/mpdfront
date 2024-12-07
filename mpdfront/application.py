@@ -1,10 +1,11 @@
-import os
+import os, time
 import logging
 import queue
 import configparser
-import gi
+import threading
 
-from . import mpd
+import gi
+from . import mpd, data
 from .message import QueueMessage
 from .ui import MpdFrontWindow
 from .constants import Constants
@@ -31,6 +32,8 @@ class MpdFrontApp(Gtk.Application):
         self.idle_queue = queue.Queue()
         self.cmd_queue = queue.Queue()
         self.data_queue = queue.Queue()
+        self.data_q_lock = threading.Lock()
+
         if host:
             self.host = host
         else:
@@ -43,7 +46,7 @@ class MpdFrontApp(Gtk.Application):
             self.mpd_cmd = mpd.Client(self.host, self.port)
             self.mpd_idle = mpd.IdleClientThread(host=self.host, port=self.port, queue=self.idle_queue, name="idleThread")
             self.mpd_cmd_thread = mpd.CommandClientThread(host=self.host, port=self.port, queue=self.cmd_queue,
-                                                          data_queue=self.data_queue, name="cmdThread")
+                                                          data_queue=self.data_queue, lock=self.data_q_lock, name="cmdThread")
         except Exception as e:
             log.error("could not connect to mpd: %s" % e)
             raise e
@@ -53,12 +56,22 @@ class MpdFrontApp(Gtk.Application):
         self.mpd_outputs = self.get_mpd_outputs()
         log.debug("mpd outputs: %s" % self.mpd_outputs)
 
+        #self.content_tree = data.ContentTree(Constants.browser_1st_column_rows)
+        #self.load_albumartists()
+        #for i in range(5):
+        #    albumartist = self.content_tree.get_top_layer().get_node_list()[0].get_child_layer().get_node_list()[i]
+        #    self.load_albums_by_albumartist(albumartist)
+        #    for j in range(len(albumartist.get_child_layer().get_node_list())):
+        #        album = albumartist.get_child_layer().get_node_list()[j]
+        #        self.load_songs_by_album_by_albumartist(album, albumartist)
+        #data.Dumper.dump(self.content_tree.get_top_layer())
+
         # initialize cache
-        self.get_albumartists()
-        self.get_artists()
-        self.get_albums()
-        self.get_genres()
-        self.get_files_list()
+        #self.get_albumartists()
+        #self.get_artists()
+        #self.get_albums()
+        #self.get_genres()
+        #self.get_files_list()
 
         self.thread_comms_timeout_id = GLib.timeout_add(Constants.check_thread_comms_interval, self.idle_thread_comms_handler)
         self.thread_comms_timeout_id = GLib.timeout_add(Constants.playback_update_interval_play, self.refresh_playback)
@@ -67,7 +80,12 @@ class MpdFrontApp(Gtk.Application):
         self.connect('shutdown', self.on_quit)
 
     def on_activate(self, app):
+        #try:
         self.window = MpdFrontWindow(application=self, config=self.config, queue=self.cmd_queue, data_queue=self.data_queue)
+        #except Exception as e:
+        #    log.critical("could not create main window: %s" % e)
+        #    self.quit()
+        #else:
         if self.css_file and os.path.isfile(self.css_file):
             log.debug("reading css file: %s" % self.css_file)
             self.css_provider = Gtk.CssProvider.new()
@@ -77,7 +95,8 @@ class MpdFrontApp(Gtk.Application):
                 Gtk.StyleContext.add_provider_for_display(display, self.css_provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
             except Exception as e:
                 log.error("could not load CSS: %s" % e)
-                raise e
+                #raise e
+        self.add_window(self.window)
         self.window.present()
         self.window.set_dividers()
 
@@ -87,8 +106,7 @@ class MpdFrontApp(Gtk.Application):
     def get_artists(self):
         """
         Gets the list of artists from mpd, enters artists into db_cache if needed
-        Returns:
-            list of artist names
+        :return: list of artist names
         """
         if not len(DataCache.cache['Artists']):
             recv = self.mpd_cmd.list("artist")
@@ -101,11 +119,11 @@ class MpdFrontApp(Gtk.Application):
     def get_albumartists(self):
         """
         Gets the list of albumartists from mpd, enters albumartists into db_cache if needed
-        Returns:
-            list of artist names
+        :return: list of artist names
         """
         if not len(DataCache.cache['Album Artists']):
             recv = self.mpd_cmd.list("albumartist")
+            #log.debug("received albumartists: %s" % recv)
             for i in recv:
                 if i == "":
                     continue
@@ -274,9 +292,11 @@ class MpdFrontApp(Gtk.Application):
         Updates playlist and playback if needed.
         Updates time info and progress bar.
         """
-        mpd_status = self.get_mpd_status()
-        current_song = self.get_mpd_currentsong()
-        self.window.playback_display.update(mpd_status, current_song, self.config.get("main", "music_dir"))
+        self.get_mpd_status()
+        self.get_mpd_currentsong()
+        self.data_q_lock.acquire()
+        self.window.playback_display.update(data.mpd_status, data.mpd_currentsong, self.config.get("main", "music_dir"))
+        self.data_q_lock.release()
         return True
 
     def get_files_list(self, path=""):
@@ -301,7 +321,7 @@ class MpdFrontApp(Gtk.Application):
         try:
             if not self.idle_queue.empty():
                 msg = self.idle_queue.get_nowait()
-                log.debug("message from thread: %s" % msg)
+                log.debug("message from thread, type: %s" % type(msg))
         except Exception as e:
             return True
 
@@ -316,11 +336,13 @@ class MpdFrontApp(Gtk.Application):
                                                         self.config.get("main", "music_dir"))
         return True
 
-    def get_mpd_response(self, type:str, item:str):
+    def get_mpd_response(self, type:str, item:str, data=None):
         if not type or not item:
-            raise ValueError("type, item is a required argument")
+            err_msg = "type, item are required arguments"
+            log.error(err_msg)
+            raise ValueError(err_msg)
         try:
-            self.cmd_queue.put(QueueMessage(type=type, item=item))
+            self.cmd_queue.put(QueueMessage(type=type, item=item, data=data))
             msg = self.data_queue.get()
             if msg and isinstance(msg, QueueMessage) and msg.get_type() == Constants.message_type_data and msg.get_item() == item:
                 return msg.get_data()
@@ -332,19 +354,54 @@ class MpdFrontApp(Gtk.Application):
             return None
 
     def get_mpd_status(self):
-        return self.get_mpd_response(type=Constants.message_type_command, item="status")
+        self.cmd_queue.put(QueueMessage(type=Constants.message_type_command, item="status"))
 
     def get_mpd_stats(self):
         return self.get_mpd_response(type=Constants.message_type_command, item="stats")
 
     def get_mpd_currentsong(self):
-        return self.get_mpd_response(type=Constants.message_type_command, item="currentsong")
+        self.cmd_queue.put(QueueMessage(type=Constants.message_type_command, item="currentsong"))
 
     def get_mpd_playlistinfo(self):
         return self.get_mpd_response(type=Constants.message_type_command, item="playlistinfo")
 
     def get_mpd_outputs(self):
         return self.get_mpd_response(type=Constants.message_type_command, item="outputs")
+
+    def load_albumartists(self):
+        try:
+            n = self.content_tree.get_top_layer().get_node(Constants.topnode_name_albumartists)
+            if not n:
+                log.debug("no top node: %s" % n)
+                return
+            recv = self.get_mpd_response(type=Constants.message_type_command, item="list", data=["albumartist"])
+            for r in recv:
+                if r:
+                    n.get_child_layer().add_node(data.ContentTreeNode({ 'name': r }))
+        except Exception as e:
+            log.error("could not load albumartists" % e)
+
+    def load_albums_by_albumartist(self, albumartist:data.ContentTreeNode):
+        try:
+            recv = self.get_mpd_response(type=Constants.message_type_command, item="list",
+                                         data=["album", "albumartist", albumartist.get_name()])
+            log.debug("albums by albumartist '%s': %s" % (albumartist.get_name(), recv))
+            for r in recv:
+                albumartist.get_child_layer().add_node(data.ContentTreeNode({ 'name': r }))
+        except Exception as e:
+            log.error("could not load albums by albumartist '%s': %s" % (albumartist.get_name(), e))
+
+    def load_songs_by_album_by_albumartist(self, album:data.ContentTreeNode, albumartist:data.ContentTreeNode):
+        try:
+            recv = self.get_mpd_response(type=Constants.message_type_command, item="find",
+                                         data=["albumartist", albumartist.get_name(), "album", album.get_name()])
+            log.debug("songs by albums by album by albumartist '%s' '%s': %s" % (album.get_name(), albumartist.get_name(), recv))
+            for r in recv:
+                new_node = data.ContentTreeNode({ 'name': r })
+                new_node.set_name(r['title'])
+                album.get_child_layer().add_node(new_node)
+        except Exception as e:
+            log.error("could not load albums by albumartist '%s': %s" % (albumartist.get_name(), e))
 
 class DataCache():
     cache = {

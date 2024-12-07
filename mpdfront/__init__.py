@@ -50,11 +50,11 @@ def main():
             sys.stderr.write("could not load logger config: %s\n" % e)
 
     ## Create App object and run it
-    try:
-        app = MpdFrontApp(config=config, css_file=args.css, application_id=Constants.application_id, host=args.host, port=args.port)
-    except Exception as e:
-        sys.stderr.write("could not create application: %s\n" % e)
-        sys.exit(2)
+    #try:
+    app = MpdFrontApp(config=config, css_file=args.css, application_id=Constants.application_id, host=args.host, port=args.port)
+    #except Exception as e:
+    #    sys.stderr.write("could not create application: %s\n" % e)
+    #    sys.exit(2)
 
     app.run(None)
     sys.exit(0)

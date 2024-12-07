@@ -9,6 +9,7 @@ from mutagen.flac import FLAC
 from mutagen.dsf import DSF
 from mutagen.mp4 import MP4
 import gi
+from . import data
 from .constants import Constants
 from .message import QueueMessage
 
@@ -294,14 +295,15 @@ class ColumnBrowser(Gtk.Box):
         :param args: args for super's constructor
         :param kwargs: args for super's constructor
         """
+        assert cols > 1, "Number of columns (cols) must be greater than 1"
         if not selected_callback or not keypress_callback:
             err_msg = "callback functions must be defined"
             log.error(err_msg)
             raise ValueError(err_msg)
         super().__init__(*args, **kwargs)
         self.set_spacing(spacing)
-        if cols < 1:
-            raise ValueError("Number of columns must be greater than 1")
+        #if cols < 1:
+        #    raise ValueError("Number of columns must be greater than 1")
         self.columns = []
         for i in range(0, cols):
             scroll = Gtk.ScrolledWindow()
@@ -505,9 +507,9 @@ class PlaybackDisplay(Gtk.Box):
         self.next_button.add_controller(next_button_ctrlr)
 
     def update(self, mpd_status:dict, mpd_currentsong:dict, music_dir:str):
-        #log.debug("status: %s" % mpd_status)
-        #log.debug("currentsong: %s" % mpd_currentsong)
-
+        if not mpd_status:
+            log.error("mpd_status not defined: %s" % mpd_status)
+            return
         ## Set labels with song information. Set to empty if there is no current song.
         if mpd_currentsong:
             if 'artist' in mpd_currentsong and 'title' in mpd_currentsong and 'album' in mpd_currentsong:
@@ -931,9 +933,9 @@ class MpdFrontWindow(Gtk.ApplicationWindow):
         self.playback_display = PlaybackDisplay(parent=self, sound_card=self.config.get("main", "sound_card"),
                                                 sound_device=self.config.get("main", "sound_device"))
         self.bottompaned.set_start_child(self.playback_display)
-        mpd_status = self.app.get_mpd_status()
-        currentsong = self.app.get_mpd_currentsong()
-        self.playback_display.update(mpd_status, currentsong, config.get("main", "music_dir"))
+        self.app.get_mpd_status()
+        self.app.get_mpd_currentsong()
+        self.playback_display.update(data.mpd_status, data.mpd_currentsong, config.get("main", "music_dir"))
 
         ## Setup playlist
         self.playlist_list = PlaylistDisplay(parent=self)
@@ -942,7 +944,7 @@ class MpdFrontWindow(Gtk.ApplicationWindow):
         self.playlist_scroll.set_hexpand(True)
         self.playlist_scroll.set_child(self.playlist_list)
         self.bottompaned.set_end_child(self.playlist_scroll)
-        self.playlist_list.update(self.app.get_mpd_playlistinfo(), currentsong)
+        self.playlist_list.update(self.app.get_mpd_playlistinfo(), data.mpd_currentsong)
 
         ## Set event handlers
         self.connect("destroy", self.close)

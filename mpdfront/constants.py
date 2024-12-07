@@ -24,25 +24,35 @@ class Constants:
     keyval_next = 0x1008ff17
     #keyval_delete = 0x
 
+    ## names of data nodes
+    topnode_name_albumartists = "Album Artists"
+    topnode_name_artists = "Artists"
+    topnode_name_albums = "Albums"
+    topnode_name_genres = "Genres"
+    topnode_name_files = "Files"
+
     ## Rows for 1st column of browser
     browser_1st_column_rows = [
-        {'type': 'category', 'value': 'Album Artists', 'data': None},
-        {'type': 'category', 'value': 'Artists', 'data': None},
-        {'type': 'category', 'value': 'Albums', 'data': None},
-        {'type': 'category', 'value': 'Genres', 'data': None},
-        {'type': 'category', 'value': 'Files', 'data': None},
+        {'type': 'category', 'name': topnode_name_albumartists, 'value': topnode_name_albumartists, 'data': None},
+        {'type': 'category', 'name': topnode_name_artists, 'value': topnode_name_artists, 'data': None},
+        {'type': 'category', 'name': topnode_name_albums, 'value': topnode_name_albums, 'data': None},
+        {'type': 'category', 'name': topnode_name_genres, 'value': topnode_name_genres, 'data': None},
+        {'type': 'category', 'name': topnode_name_files, 'value': topnode_name_files, 'data': None},
     ]
 
     proc_file_fmt = "/proc/asound/card%s/pcm%sp/sub%s/hw_params"  ## proc file with DAC information
     #proc_file_fmt = "./hw_params"
 
+    ## QueueMessage types and items
     message_type_change = "change"
     message_item_playlist = "playlist"
     message_item_player = "player"
     message_type_command = "command"
     message_type_data = "data"
 
+    ## sleep/wait intervals
     check_thread_comms_interval = 1000      ## milliseconds
     playback_update_interval_play = 1000    ## milliseconds
+    reconnect_retry_sleep_secs = 1          ## seconds
+    thread_alive_check_interval = 1000      ## milliseconds
 
-    reconnect_retry_sleep_secs = 1
