@@ -15,10 +15,6 @@ class ContentTreeNode(GObject.GObject):
     metadata:dict = None
 
     def __init__(self, metadata:dict, *args, **kwargs):
-        if not metadata:
-            err_msg = "metadata is a required argument"
-            log.error(err_msg)
-            raise ValueError(err_msg)
         super().__init__(*args, **kwargs)
         self.metadata = metadata
         self._child_layer = ContentTreeLayer()
@@ -43,10 +39,6 @@ class ContentTreeLayer:
         self._by_name = {}
 
     def add_node(self, node:ContentTreeNode):
-        if not node:
-            err_msg = "node is a required argument"
-            log.error(err_msg)
-            raise ValueError(err_msg)
         #log.debug("adding node with metadata: %s" % node.metadata)
         self._nodes.append(node)
         if node.get_name() in self._by_name.keys():
@@ -97,8 +89,3 @@ class Dumper:
                 i_char2 = " "
             sys.stdout.write("%s%s-%s\n" % (indent, i_char1, n.get_name()))
             Dumper.dump(n.get_child_layer(), indent+i_char2+"  ")
-
-content_tree:ContentTree = None
-mpd_status:dict = None
-mpd_currentsong:dict = None
-mpd_playlist = None

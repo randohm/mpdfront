@@ -7,6 +7,9 @@ class Constants:
     idle_sleep_retry_connect = 2
     display_referesh_interval = 330
 
+    rewind_arg = "-5"
+    cue_arg = "+5"
+
     ## symbols for playback control button labels
     symbol_previous = chr(9612) + chr(9664)
     symbol_rewind = chr(9664) + chr(9664)
@@ -47,8 +50,6 @@ class Constants:
     message_type_change = "change"
     message_item_playlist = "playlist"
     message_item_player = "player"
-    message_type_command = "command"
-    message_type_data = "data"
 
     ## sleep/wait intervals
     check_thread_comms_interval = 1000      ## milliseconds

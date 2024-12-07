@@ -11,29 +11,64 @@ log = logging.getLogger(__name__)
 
 class Client:
     def __init__(self, host:str, port:int):
-        if not host or not port:
-            err_msg = "host or port not defined"
-            log.error(err_msg)
-            raise ValueError(err_msg)
         self.host = host
         self.port = port
         try:
-            self.mpd = musicpd.MPDClient()
-            self.mpd.connect(host, port)
+            self.mpd_client = musicpd.MPDClient()
+            self.mpd_client.connect(host, port)
             log.info("connected to mpd %s:%d" % (host, port))
         except Exception as e:
             log.critical("could not connect to mpd %s:%d: %s" % (host, port, e))
             raise e
+        
+        self._mpd_callbacks = {
+            'add': self.mpd_client.add,
+            'clear': self.mpd_client.clear,
+            'consume': self.mpd_client.consume,
+            'currentsong': self.mpd_client.currentsong,
+            'deleteid': self.mpd_client.deleteid,
+            'disableoutput': self.mpd_client.disableoutput,
+            'enableoutput': self.mpd_client.enableoutput,
+            'fetch_idle': self.mpd_client.fetch_idle,
+            'find': self.mpd_client.find,
+            'findadd': self.mpd_client.findadd,
+            'list': self.mpd_client.list,
+            'lsinfo': self.mpd_client.lsinfo,
+            'moveid': self.mpd_client.moveid,
+            'next': self.mpd_client.next,
+            'outputs': self.mpd_client.outputs,
+            'pause': self.mpd_client.pause,
+            'play': self.mpd_client.play,
+            'play_or_pause': self.play_or_pause,
+            'playid': self.mpd_client.playid,
+            'playlistinfo': self.mpd_client.playlistinfo,
+            'previous': self.mpd_client.previous,
+            'random': self.mpd_client.random,
+            'repeat': self.mpd_client.repeat,
+            'seekcur': self.mpd_client.seekcur,
+            'send_idle': self.mpd_client.send_idle,
+            'single': self.mpd_client.single,
+            'stats': self.mpd_client.stats,
+            'status': self.mpd_client.status,
+            'stop': self.mpd_client.stop,
+            'toggle': self.play_or_pause,
+        }
+
+    def __getattr__(self, attr):
+        #log.debug("called __getattr__: %s" % attr)
+        if attr not in self._mpd_callbacks:
+            raise AttributeError("object has no attribute %s" % attr)
+        return lambda *args: self._mpd_callbacks[attr](*args)
 
     def reconnect(self):
         try:
             log.debug("attempting disconnect")
-            self.mpd.disconnect()
+            self.mpd_client.disconnect()
         except Exception as e:
             log.debug("diconnect failed: %s" % e)
         try:
             log.debug("attempting reconnect")
-            self.mpd.connect()
+            self.mpd_client.connect()
             log.info("reconnected to mpd")
         except Exception as e:
             log.critical("could not reconnect to mpd %s:%d: %s" % (self.host, self.port, e))
@@ -83,90 +118,6 @@ class Client:
             finally:
                 retries += 1
 
-    def list(self, *args, **kwargs):
-        return self.run_command(self.mpd.list, *args, **kwargs)
-
-    def find(self, *args, **kwargs):
-        return self.run_command(self.mpd.find, *args, **kwargs)
-
-    def status(self, *args, **kwargs):
-        return self.run_command(self.mpd.status, *args, **kwargs)
-
-    def stats(self, *args, **kwargs):
-        return self.run_command(self.mpd.stats, *args, **kwargs)
-
-    def outputs(self, *args, **kwargs):
-        return self.run_command(self.mpd.outputs, *args, **kwargs)
-
-    def lsinfo(self, *args, **kwargs):
-        return self.run_command(self.mpd.lsinfo, *args, **kwargs)
-
-    def play(self, *args, **kwargs):
-        return self.run_command(self.mpd.play, *args, **kwargs)
-
-    def pause(self, *args, **kwargs):
-        return self.run_command(self.mpd.pause, *args, **kwargs)
-
-    def stop(self, *args, **kwargs):
-        return self.run_command(self.mpd.stop, *args, **kwargs)
-
-    def currentsong(self, *args, **kwargs):
-        return self.run_command(self.mpd.currentsong, *args, **kwargs)
-
-    def playlistinfo(self, *args, **kwargs):
-        return self.run_command(self.mpd.playlistinfo, *args, **kwargs)
-
-    def previous(self, *args, **kwargs):
-        return self.run_command(self.mpd.previous, *args, **kwargs)
-
-    def next(self, *args, **kwargs):
-        return self.run_command(self.mpd.next, *args, **kwargs)
-
-    def seekcur(self, *args, **kwargs):
-        return self.run_command(self.mpd.seekcur, *args, **kwargs)
-
-    def enableoutput(self, *args, **kwargs):
-        return self.run_command(self.mpd.enableoutput, *args, **kwargs)
-
-    def disableoutput(self, *args, **kwargs):
-        return self.run_command(self.mpd.disableoutput, *args, **kwargs)
-
-    def consume(self, *args, **kwargs):
-        return self.run_command(self.mpd.consume, *args, **kwargs)
-
-    def random(self, *args, **kwargs):
-        return self.run_command(self.mpd.random, *args, **kwargs)
-
-    def repeat(self, *args, **kwargs):
-        return self.run_command(self.mpd.repeat, *args, **kwargs)
-
-    def single(self, *args, **kwargs):
-        return self.run_command(self.mpd.single, *args, **kwargs)
-
-    def moveid(self, *args, **kwargs):
-        return self.run_command(self.mpd.moveid, *args, **kwargs)
-
-    def deleteid(self, *args, **kwargs):
-        return self.run_command(self.mpd.deleteid, *args, **kwargs)
-
-    def clear(self, *args, **kwargs):
-        return self.run_command(self.mpd.clear, *args, **kwargs)
-
-    def add(self, *args, **kwargs):
-        return self.run_command(self.mpd.add, *args, **kwargs)
-
-    def findadd(self, *args, **kwargs):
-        return self.run_command(self.mpd.findadd, *args, **kwargs)
-
-    def playid(self, *args, **kwargs):
-        return self.run_command(self.mpd.playid, *args, **kwargs)
-
-    def send_idle(self, *args, **kwargs):
-        return self.run_command(self.mpd.send_idle, *args, **kwargs)
-
-    def fetch_idle(self, *args, **kwargs):
-        return self.run_command(self.mpd.fetch_idle, *args, **kwargs)
-
     def play_or_pause(self):
         """
         Check the player status, play if stopped, pause otherwise.
@@ -177,11 +128,7 @@ class Client:
             return self.pause()
 
 class ClientThread:
-    def __init__(self, host:str, port:int, queue:queue.Queue, name:str):
-        if not host or not port or not queue:
-            err_msg = "host, port, app, or queue not defined"
-            log.error(err_msg)
-            raise ValueError(err_msg)
+    def __init__(self, host:str, port:int, queue:queue.Queue=None, name:str=""):
         self.host = host
         self.port = port
         self.queue = queue
@@ -271,103 +218,3 @@ class IdleClientThread(ClientThread):
                     self.queue.put(QueueMessage(type=Constants.message_type_change, item="mixer"))
                 else:
                     log.info("Unhandled change: %s" % c)
-
-class CommandClientThread(ClientThread):
-    """
-    Connects to mpd, waits on messages from the UI, and runs commands based on the messages.
-    """
-    def __init__(self, data_queue:queue.Queue, lock:threading.Lock, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.data_queue = data_queue
-        self.thread_lock = lock
-
-    def pre_run(self):
-        self.cmd_callbacks = {
-            'toggle': self.mpd.play_or_pause,
-            'add': self.mpd.add,
-            'clear': self.mpd.clear,
-            'consume': self.mpd.consume,
-            'currentsong': self.load_mpd_currentsong,
-            'deleteid': self.mpd.deleteid,
-            'disableoutput': self.mpd.disableoutput,
-            'enableoutput': self.mpd.enableoutput,
-            'fetch_idle': self.mpd.fetch_idle,
-            'find': self.mpd_find,
-            'findadd': self.mpd_findadd,
-            'list': self.mpd_list,
-            'lsinfo': self.mpd.lsinfo,
-            'moveid': self.mpd.moveid,
-            'next': self.mpd.next,
-            'outputs': self.mpd_outputs,
-            'pause': self.mpd.pause,
-            'play': self.mpd.play,
-            'play_or_pause': self.mpd.play_or_pause,
-            'playid': self.mpd.playid,
-            'playlistinfo': self.mpd_playlistinfo,
-            'previous': self.mpd.previous,
-            'random': self.mpd.random,
-            'repeat': self.mpd.repeat,
-            'seekcur': self.mpd.seekcur,
-            'send_idle': self.mpd.send_idle,
-            'single': self.mpd.single,
-            'stats': self.mpd_stats,
-            'status': self.load_mpd_status,
-            'stop': self.mpd.stop,
-        }
-
-    def one_run(self):
-        try:
-            log.debug("waiting for message")
-            msg = self.queue.get()
-            log.debug("message received, type: %s, item: %s, data: %s" % (msg.get_type(), msg.get_item(), msg.get_data()))
-        except Exception as e:
-            log.error("error receiving message from queue: %e" % e)
-            return
-
-        if msg.get_type() == Constants.message_type_command:
-            log.debug("running command: %s" % msg.get_item())
-            try:
-                if msg.get_data():
-                    self.cmd_callbacks[msg.get_item()](*msg.get_data())
-                else:
-                    self.cmd_callbacks[msg.get_item()]()
-            except Exception as e:
-                log.error("error running command '%s': %s" % (msg.get_item(), e))
-                return
-        else:
-            log.debug("unhandled type: %s" % msg.get_type())
-
-    def get_command_response(self, callback, item:str, *args):
-        r = callback(*args)
-        log.debug("got response: %s" % r)
-        self.data_queue.put(QueueMessage(type=Constants.message_type_data, item=item, data=r))
-
-    def load_mpd_status(self):
-        #self.get_command_response(self.mpd.status, "status")
-        self.thread_lock.acquire()
-        data.mpd_status = self.mpd.status()
-        self.thread_lock.release()
-        log.debug("mpd status: %s" % data.mpd_status)
-
-    def load_mpd_currentsong(self):
-        #self.get_command_response(self.mpd.currentsong, "currentsong")
-        data.mpd_currentsong = self.mpd.currentsong()
-        log.debug("mpd status: %s" % data.mpd_currentsong)
-
-    def mpd_playlistinfo(self):
-        self.get_command_response(self.mpd.playlistinfo, "playlistinfo")
-
-    def mpd_stats(self):
-        self.get_command_response(self.mpd.stats, "stats")
-
-    def mpd_outputs(self):
-        self.get_command_response(self.mpd.outputs, "outputs")
-
-    def mpd_list(self, *args):
-        self.get_command_response(self.mpd.list, "list", *args)
-
-    def mpd_find(self, *args):
-        self.get_command_response(self.mpd.find, "find", *args)
-
-    def mpd_findadd(self, *args):
-        self.get_command_response(self.mpd.findadd, "findadd", *args)

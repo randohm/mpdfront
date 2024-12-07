@@ -1,4 +1,3 @@
-import queue
 import configparser
 import re, os, html, io
 import logging
@@ -295,15 +294,11 @@ class ColumnBrowser(Gtk.Box):
         :param args: args for super's constructor
         :param kwargs: args for super's constructor
         """
+        assert selected_callback, "selected_callback must be defined"
+        assert keypress_callback, "keypress_callback must be defined"
         assert cols > 1, "Number of columns (cols) must be greater than 1"
-        if not selected_callback or not keypress_callback:
-            err_msg = "callback functions must be defined"
-            log.error(err_msg)
-            raise ValueError(err_msg)
         super().__init__(*args, **kwargs)
         self.set_spacing(spacing)
-        #if cols < 1:
-        #    raise ValueError("Number of columns must be greater than 1")
         self.columns = []
         for i in range(0, cols):
             scroll = Gtk.ScrolledWindow()
@@ -356,9 +351,10 @@ class ColumnBrowser(Gtk.Box):
             self.columns[col_index].append(label)
 
 class PlaybackDisplay(Gtk.Box):
-    def __init__(self, parent, sound_card:int, sound_device:int, *args, **kwargs):
+    def __init__(self, parent:Gtk.Window, app:Gtk.Application, sound_card:int=None, sound_device:int=None, *args, **kwargs):
         super().__init__(orientation=Gtk.Orientation.VERTICAL, *args, **kwargs)
         self.parent = parent
+        self.app = app
         self.sound_card = sound_card
         self.sound_device = sound_device
         self.set_name("playback-display")
@@ -709,44 +705,42 @@ class PlaybackDisplay(Gtk.Box):
         """
         Click handler for previous button
         """
-        self.parent.cmd_queue.put(QueueMessage(type=Constants.message_type_command, item="previous"))
+        self.app.mpd_previous()
         controller.reset()
 
     def rewind_clicked(self, controller, x, y, user_data):
         """
         Click handler for rewind button
         """
-        #self.parent.app.mpd_cmd.seekcur("-5")
-        self.parent.cmd_queue.put(QueueMessage(type=Constants.message_type_command, item="seekcur", data=["-5"]))
+        self.app.mpd_seekcur(Constants.rewind_arg)
         controller.reset()
 
     def stop_clicked(self, controller, x, y, user_data):
         """
         Click handler for stop button
         """
-        self.parent.cmd_queue.put(QueueMessage(type=Constants.message_type_command, item="stop"))
+        self.app.mpd_stop()
         controller.reset()
 
     def play_clicked(self, controller, x, y, user_data):
         """
         Click handler for play/pause button
         """
-        self.parent.cmd_queue.put(QueueMessage(type=Constants.message_type_command, item="toggle"))
+        self.app.mpd_toggle()
         controller.reset()
 
     def cue_clicked(self, controller, x, y, user_data):
         """
         Click handler for cue button
         """
-        #self.parent.app.mpd_cmd.seekcur("+5")
-        self.parent.cmd_queue.put(QueueMessage(type=Constants.message_type_command, item="seekcur", data=["+5"]))
+        self.app.mpd_seekcur(Constants.cue_arg)
         controller.reset()
 
     def next_clicked(self, controller, x, y, user_data):
         """
         Click handler for next button
         """
-        self.parent.cmd_queue.put(QueueMessage(type=Constants.message_type_command, item="next"))
+        self.app.mpd_next()
         controller.reset()
 
 class PlaylistDisplay(Gtk.ListBox):
@@ -755,12 +749,13 @@ class PlaylistDisplay(Gtk.ListBox):
     """
     last_selected = 0  ## Points to last selected song in playlist
 
-    def __init__(self, parent:Gtk.Window, *args, **kwargs):
+    def __init__(self, parent:Gtk.Window, app:Gtk.Application,  *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.set_name("playlistbox")
         self.liststore = Gio.ListStore()
         self.bind_model(model=self.liststore, create_widget_func=self.create_list_label)
         self.parent = parent
+        self.app = app
         controller = Gtk.EventControllerKey.new()
         controller.connect("key-pressed", self.on_key_pressed)
         self.add_controller(controller)
@@ -829,7 +824,7 @@ class PlaylistDisplay(Gtk.ListBox):
             self.track_delete()
         elif response == 4:
             song = self.get_selected_row().get_child().data
-            self.parent.cmd_queue.put(QueueMessage(type=Constants.message_type_command, item="playid", data=(song['id'])))
+            self.parent.mpd_playid(song['id'])
             dialog.destroy()
         elif response == 0:
             dialog.destroy()
@@ -850,8 +845,7 @@ class PlaylistDisplay(Gtk.ListBox):
         log.debug("moving song up 1: '%s'" % song['title'])
         if index > 0:
             index -= 1
-            #self.app.mpd_cmd.moveid(song['id'], index)
-            self.parent.cmd_queue.put(QueueMessage(type=Constants.message_type_command, item="moveid", data=[song['id'], index]))
+            self.app.mpd_moveid(song['id'], index)
         self.last_selected = index
         self.focus_on = "playlist"
 
@@ -860,8 +854,7 @@ class PlaylistDisplay(Gtk.ListBox):
         song = self.get_selected_row().get_child().data
         log.debug("moving song down 1: '%s'" % song['title'])
         if index + 1 < len(self.liststore):
-            #self.app.mpd_cmd.moveid(song['id'], index+1)
-            self.parent.cmd_queue.put(QueueMessage(type=Constants.message_type_command, item="moveid", data=[song['id'], index+1]))
+            self.app.mpd_moveid(song['id'], index+1)
         self.last_selected = index+1
         self.focus_on = "playlist"
 
@@ -872,8 +865,7 @@ class PlaylistDisplay(Gtk.ListBox):
         index -= 1
         if index < 0:
             index = 0
-        #self.app.mpd_cmd.deleteid(song['id'])
-        self.parent.cmd_queue.put(QueueMessage(type=Constants.message_type_command, item="deleteid", data=[song['id']]))
+        self.app.mpd_deleteid(song['id'])
         self.last_selected = index
         self.focus_on = "playlist"
 
@@ -894,20 +886,13 @@ class MpdFrontWindow(Gtk.ApplicationWindow):
     focus_on = "broswer"        ## Either 'playlist' or 'browser'
     initial_resized = False
 
-    def __init__(self, config:configparser, application:Gtk.ApplicationWindow, queue:queue.Queue,
-                 data_queue:queue.Queue, *args, **kwargs):
-        if not config or not application or not queue or not data_queue:
-            err_msg = "config, application, queue, data_queue are required arguments"
-            log.error(err_msg)
-            raise ValueError(err_msg)
+    def __init__(self, config:configparser, application:Gtk.ApplicationWindow, *args, **kwargs):
         super().__init__(application=application, *args, **kwargs)
         self.config = config
         self.set_default_size(int(config.get("main", "width")), int(config.get("main", "height")))
         self.set_resizable(False)
         self.set_decorated(False)
         self.app = application
-        self.cmd_queue = queue
-        self.data_queue = data_queue
 
         self.controller = Gtk.EventControllerKey.new()
         self.controller.connect('key-pressed', self.on_key_pressed)
@@ -930,21 +915,22 @@ class MpdFrontWindow(Gtk.ApplicationWindow):
         self.bottompaned = Gtk.Paned(orientation=Gtk.Orientation.HORIZONTAL)
         self.mainpaned.set_end_child(self.bottompaned)
 
-        self.playback_display = PlaybackDisplay(parent=self, sound_card=self.config.get("main", "sound_card"),
+        self.playback_display = PlaybackDisplay(parent=self, app=self.app, sound_card=self.config.get("main", "sound_card"),
                                                 sound_device=self.config.get("main", "sound_device"))
         self.bottompaned.set_start_child(self.playback_display)
-        self.app.get_mpd_status()
-        self.app.get_mpd_currentsong()
-        self.playback_display.update(data.mpd_status, data.mpd_currentsong, config.get("main", "music_dir"))
+        mpd_status = self.app.mpd_status()
+        currentsong = self.app.mpd_currentsong()
+        playlistinfo = self.app.mpd_playlistinfo()
+        self.playback_display.update(mpd_status, currentsong, config.get("main", "music_dir"))
 
         ## Setup playlist
-        self.playlist_list = PlaylistDisplay(parent=self)
+        self.playlist_list = PlaylistDisplay(parent=self, app=self.app)
         self.playlist_scroll = Gtk.ScrolledWindow()
         self.playlist_scroll.set_name("playlistscroll")
         self.playlist_scroll.set_hexpand(True)
         self.playlist_scroll.set_child(self.playlist_list)
         self.bottompaned.set_end_child(self.playlist_scroll)
-        self.playlist_list.update(self.app.get_mpd_playlistinfo(), data.mpd_currentsong)
+        self.playlist_list.update(playlistinfo, currentsong)
 
         ## Set event handlers
         self.connect("destroy", self.close)
@@ -981,33 +967,28 @@ class MpdFrontWindow(Gtk.ApplicationWindow):
                 self.close()
             elif keyval == Constants.keyval_play or keyval == ord(self.config.get("keys", "playpause")):
                 log.debug("PLAY/PAUSE")
-                self.cmd_queue.put(QueueMessage(type=Constants.message_type_command, item="toggle"))
+                self.app.mpd_toggle()
             elif keyval == ord(self.config.get("keys", "stop")):
                 log.debug("STOP")
-                self.cmd_queue.put(QueueMessage(type=Constants.message_type_command, item="stop"))
+                self.app.mpd_stop()
             elif keyval == Constants.keyval_previous or keyval == ord(self.config.get("keys", "previous")):
                 log.debug("PREVIOUS")
-                self.cmd_queue.put(QueueMessage(type=Constants.message_type_command, item="previous"))
+                self.app.mpd_previous()
             elif keyval == Constants.keyval_next or keyval == ord(self.config.get("keys", "next")):
                 log.debug("NEXT")
-                self.cmd_queue.put(QueueMessage(type=Constants.message_type_command, item="next"))
+                self.app.mpd_next()
             elif keyval == Constants.keyval_rewind or keyval == ord(self.config.get("keys", "rewind")):
                 log.debug("REWIND")
-                #self.app.mpd_cmd.seekcur("-5")
-                self.cmd_queue.put(QueueMessage(type=Constants.message_type_command, item="seekcur", data=["-5"]))
+                self.app.mpd_seekcur(Constants.rewind_arg)
             elif keyval == Constants.keyval_cue or keyval == ord(self.config.get("keys", "cue")):
                 log.debug("CUE")
-                #self.app.mpd_cmd.seekcur("+5")
-                self.cmd_queue.put(QueueMessage(type=Constants.message_type_command, item="seekcur", data=["+5"]))
+                self.app.mpd_seekcur(Constants.cue_arg)
 
             elif keyval == ord(self.config.get("keys", "outputs")):
                 self.outputs_dialog = OutputsDialog(self, self.outputs_changed)
-                #response = self.outputs_dialog.run()
-                #self.outputs_dialog.destroy()
 
             elif keyval == ord(self.config.get("keys", "options")):
-                self.cmd_queue.put(QueueMessage(type=Constants.message_type_command, item="status"))
-                mpd_status = self.data_queue.get().get_data()
+                mpd_status = self.app.mpd_status()
                 self.options_dialog = OptionsDialog(self, self.options_changed, mpd_status)
 
             elif keyval == ord(self.config.get("keys", "cardselect")):
@@ -1067,9 +1048,8 @@ class MpdFrontWindow(Gtk.ApplicationWindow):
                 else:
                     self.bottompaned.set_position(0)
 
-            elif keyval == ord('v'):
-                self.set_dividers()
-
+            #elif keyval == ord('v'):
+            #    self.set_dividers()
             #elif keyval == Gdk.KEY_Right:
             #    log.debug("RIGHT")
             #elif keyval == Gdk.KEY_Left:
@@ -1081,7 +1061,7 @@ class MpdFrontWindow(Gtk.ApplicationWindow):
             #else:
             #    log.debug("key press: %s" % keyval)
         except Exception as e:
-            log.error("Unknown exception: %s" % e)
+            log.error("error on keypress (%s): %s" % (type(e).__name__, e))
 
     def browser_key_pressed(self, controller, keyval, keycode, state):
         """
@@ -1240,8 +1220,6 @@ class MpdFrontWindow(Gtk.ApplicationWindow):
             return
         log.debug("song info: %s" % song)
         dialog = SongInfoDialog(self, song)
-        #dialog.run()
-        #dialog.destroy()
 
     def outputs_changed(self, button, outputid):
         """
@@ -1251,11 +1229,9 @@ class MpdFrontWindow(Gtk.ApplicationWindow):
         :param outputid: output ID from the button
         """
         if button.get_active():
-            #self.app.mpd_cmd.enableoutput(outputid)
-            self.cmd_queue.put(QueueMessage(type=Constants.message_type_command, item="enableoutput", data=[outputid]))
+            self.app.mpd_enableoutput.enableoutput(outputid)
         else:
-            #self.app.mpd_cmd.disableoutput(outputid)
-            self.cmd_queue.put(QueueMessage(type=Constants.message_type_command, item="disableoutput", data=[outputid]))
+            self.app.mpd_disableoutput(outputid)
         self.app.mpd_outputs = self.app.get_mpd_outputs()
 
     def options_changed(self, button, option):
@@ -1265,17 +1241,13 @@ class MpdFrontWindow(Gtk.ApplicationWindow):
         :param option: name of the option to change
         """
         if option == "consume":
-            #self.app.mpd_cmd.consume(int(button.get_active()))
-            self.cmd_queue.put(QueueMessage(type=Constants.message_type_command, item="consume", data=[int(button.get_active())]))
+            self.app.mpd_consume(int(button.get_active()))
         elif option == "random":
-            #self.app.mpd_cmd.random(int(button.get_active()))
-            self.cmd_queue.put(QueueMessage(type=Constants.message_type_command, item="random", data=[int(button.get_active())]))
+            self.app.mpd_random(int(button.get_active()))
         elif option == "repeat":
-            #self.app.mpd_cmd.repeat(int(button.get_active()))
-            self.cmd_queue.put(QueueMessage(type=Constants.message_type_command, item="repeat", data=[int(button.get_active())]))
+            self.app.mpd_repeat(int(button.get_active()))
         elif option == "single":
-            #self.app.mpd_cmd.single(int(button.get_active()))
-            self.cmd_queue.put(QueueMessage(type=Constants.message_type_command, item="single", data=[int(button.get_active())]))
+            self.app.mpd_single(int(button.get_active()))
         else:
             log.info("unhandled option: %s" % option)
 
@@ -1285,7 +1257,6 @@ class MpdFrontWindow(Gtk.ApplicationWindow):
             self.card_id = button.get_value_as_int()
         elif change == "device_id":
             self.device_id = button.get_value_as_int()
-        #self.playback_display.update()
 
     ## New methods
     def playlist_confirm_dialog_response(self, dialog, response):
@@ -1293,34 +1264,25 @@ class MpdFrontWindow(Gtk.ApplicationWindow):
         dialog.destroy()
         if response == 2:
             ## Clear list before adding for "replace"
-            #self.app.mpd_cmd.clear()
-            self.cmd_queue.put(QueueMessage(type=Constants.message_type_command, item="clear"))
+            self.app.mpd_clear()
         if response in (1, 2): ## Add or replace
             if self.browser_selected_items[-1]['type'] in ("song", "file"):
                 log.debug("adding song: %s" % self.browser_selected_items[-1]['data']['title'])
-                #self.app.mpd_cmd.add(self.browser_selected_items[-1]['data']['file'])
-                self.cmd_queue.put(QueueMessage(type=Constants.message_type_command, item="add",
-                                                   data=[self.browser_selected_items[-1]['data']['file']]))
+                self.app.mpd_add(self.browser_selected_items[-1]['data']['file'])
             elif self.browser_selected_items[-1]['type'] == "album":
                 log.debug("adding album: %s" % self.browser_selected_items[-1]['value'])
                 if self.browser_selected_items[-2]['type'] == "artist":
                     log.debug("adding album by artist: %s" % self.browser_selected_items[-2]['value'])
-                    #self.app.mpd_cmd.findadd("artist", self.browser_selected_items[-2]['value'], "album", self.browser_selected_items[-1]['value'])
-                    self.cmd_queue.put(QueueMessage(type=Constants.message_type_command, item="findadd",
-                                                    data=["artist", self.browser_selected_items[-2]['value'], "album",
-                                                          self.browser_selected_items[-1]['value']]))
+                    self.app.mpd_findadd("artist", self.browser_selected_items[-2]['value'], "album",
+                                         self.browser_selected_items[-1]['value'])
                 elif self.browser_selected_items[-2]['type'] == "albumartist":
                     log.debug("adding album by albumartist: %s" % self.browser_selected_items[-2]['value'])
-                    #self.app.mpd_cmd.findadd("albumartist", self.browser_selected_items[-2]['value'], "album", self.browser_selected_items[-1]['value'])
-                    self.cmd_queue.put(QueueMessage(type=Constants.message_type_command, item="findadd",
-                                                    data=["albumartist", self.browser_selected_items[-2]['value'],
-                                                          "album", self.browser_selected_items[-1]['value']]))
+                    self.app.mpd_findadd("albumartist", self.browser_selected_items[-2]['value'], "album",
+                                         self.browser_selected_items[-1]['value'])
                 elif self.browser_selected_items[-2]['type'] == "genre":
                     log.debug("adding album by genre: %s" % self.browser_selected_items[-2]['value'])
-                    #self.app.mpd_cmd.findadd("genre", self.browser_selected_items[-2]['value'], "album", self.browser_selected_items[-1]['value'])
-                    self.cmd_queue.put(QueueMessage(type=Constants.message_type_command, item="findadd",
-                                                    data=["genre", self.browser_selected_items[-2]['value'], "album",
-                                                          self.browser_selected_items[-1]['value']]))
+                    self.app.mpd_findadd("genre", self.browser_selected_items[-2]['value'], "album",
+                                         self.browser_selected_items[-1]['value'])
                 else:
                     log.error("unhandled type 2: %s" % self.browser_selected_items[-2]['type'])
             else:
