@@ -6,6 +6,7 @@ class Constants:
     config_file = os.environ['HOME'] + "/.config/mpdfront/mpdfront.cfg"
     idle_sleep_retry_connect = 2
     display_referesh_interval = 330
+    browser_num_columnns = 4
 
     rewind_arg = "-5"
     cue_arg = "+5"
@@ -36,11 +37,11 @@ class Constants:
 
     ## Rows for 1st column of browser
     browser_1st_column_rows = [
-        {'type': 'category', 'name': topnode_name_albumartists, 'value': topnode_name_albumartists, 'data': None},
-        {'type': 'category', 'name': topnode_name_artists, 'value': topnode_name_artists, 'data': None},
-        {'type': 'category', 'name': topnode_name_albums, 'value': topnode_name_albums, 'data': None},
-        {'type': 'category', 'name': topnode_name_genres, 'value': topnode_name_genres, 'data': None},
-        {'type': 'category', 'name': topnode_name_files, 'value': topnode_name_files, 'data': None},
+        {'type': 'category', 'name': topnode_name_albumartists},
+        {'type': 'category', 'name': topnode_name_artists},
+        {'type': 'category', 'name': topnode_name_albums},
+        {'type': 'category', 'name': topnode_name_genres},
+        {'type': 'category', 'name': topnode_name_files},
     ]
 
     proc_file_fmt = "/proc/asound/card%s/pcm%sp/sub%s/hw_params"  ## proc file with DAC information
@@ -57,3 +58,11 @@ class Constants:
     reconnect_retry_sleep_secs = 1          ## seconds
     thread_alive_check_interval = 1000      ## milliseconds
 
+    ## label metatypes
+    label_t_category = "category"
+    label_t_albumartist = "albumartist"
+    label_t_artist = "artist"
+    label_t_album = "album"
+    label_t_genre = "genre"
+    label_t_file = "file"
+    label_t_song = "song"

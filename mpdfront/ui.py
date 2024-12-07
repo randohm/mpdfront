@@ -10,7 +10,6 @@ from mutagen.mp4 import MP4
 import gi
 from . import data
 from .constants import Constants
-from .message import QueueMessage
 
 gi.require_version("Gtk", "4.0")
 from gi.repository import Gtk, Gdk, GdkPixbuf, GObject, Pango, GLib, Gio
@@ -260,12 +259,15 @@ class MetadataLabel(Gtk.Label):
         """
         self.data = data
 
-    def set_metatype(self, t):
+    def set_metatype(self, t:str):
         """
         Set the metatype for the label
         :param t: can be anything
         """
         self.type = t
+
+    def set_content_node(self, node:data.ContentTreeNode):
+        self.node = node
 
 class IndexedListBox(Gtk.ListBox):
     """
@@ -283,7 +285,7 @@ class ColumnBrowser(Gtk.Box):
     Column browser for a tree data structure. Inherits from GtkBox.
     Creates columns with a list of GtkScrolledWindows containing a GtkListBox.
     """
-    def __init__(self, selected_callback, keypress_callback, cols=2, spacing=0, hexpand=True, vexpand=True, *args, **kwargs):
+    def __init__(self, parent:Gtk.Window, app:Gtk.Application, content_tree:data.ContentTree, cols=2, spacing=0, hexpand=True, vexpand=True, *args, **kwargs):
         """
         Constructor for the column browser.
         :param selected_callback: callback function for handling row-selected events
@@ -294,26 +296,35 @@ class ColumnBrowser(Gtk.Box):
         :param args: args for super's constructor
         :param kwargs: args for super's constructor
         """
-        assert selected_callback, "selected_callback must be defined"
-        assert keypress_callback, "keypress_callback must be defined"
         assert cols > 1, "Number of columns (cols) must be greater than 1"
         super().__init__(*args, **kwargs)
+        self.parent = parent
+        self.app = app
+        self.content_tree = content_tree
         self.set_spacing(spacing)
         self.columns = []
+        self.liststores = []
         for i in range(0, cols):
             scroll = Gtk.ScrolledWindow()
             listbox = IndexedListBox()
             listbox.set_hexpand(hexpand)
             listbox.set_vexpand(vexpand)
             listbox.set_index(i)
-            listbox.connect("row-selected", selected_callback)
+            listbox.connect("row-selected", self.on_row_selected)
             #listbox.connect("row-activated", keypress_callback)
             scroll.set_child(listbox)
+            liststore = Gio.ListStore()
+            listbox.bind_model(model=liststore, create_widget_func=self.create_list_label)
             self.append(scroll)
             self.columns.append(listbox)
+            self.liststores.append(liststore)
+
+        ## initialize 1st column
+        for n in self.content_tree.get_top_layer().get_node_list():
+            self.liststores[0].append(n)
 
         self.controller = Gtk.EventControllerKey.new()
-        self.controller.connect('key-pressed', keypress_callback)
+        self.controller.connect('key-pressed', self.on_key_pressed)
         self.add_controller(self.controller)
 
     def get_selected_rows(self):
@@ -338,6 +349,7 @@ class ColumnBrowser(Gtk.Box):
         :param data:  dictionary
         :param clear_rest: boolean, True: clear all columns to the left as well. default: True
         """
+        return
         if clear_rest:
             for i in range(col_index, len(self.columns)):
                 self.columns[i].remove_all()
@@ -349,6 +361,65 @@ class ColumnBrowser(Gtk.Box):
             label.set_metadata(i['data'])
             label.set_halign(Gtk.Align.START)
             self.columns[col_index].append(label)
+
+    def create_list_label(self, node):
+        log.debug("creating label for: %s" % node.get_name())
+        label = MetadataLabel(label=node.get_name())
+        label.set_content_node(node)
+        label.set_metatype(node.metadata['type'])
+        label.set_metadata(node.metadata)
+        label.set_halign(Gtk.Align.START)
+        label.set_valign(Gtk.Align.START)
+        return label
+
+    def on_key_pressed(self, controller, keyval, keycode, state):
+        """
+        Keypress handler for toplevel widget. Responds to global keys for playback control.
+        """
+        ctrl_pressed = state & Gdk.ModifierType.CONTROL_MASK
+        cmd_pressed = state & Gdk.ModifierType.META_MASK   ## Cmd
+        #shift_pressed = state & Gdk.ModifierType.SHIFT_MASK
+        #alt_pressed = state & Gdk.ModifierType.ALT_MASK
+
+        try:
+            log.debug("Key pressed: %x" % keyval)
+        except Exception as e:
+            log.error("error on keypress (%s): %s" % (type(e).__name__, e))
+
+    def on_row_selected(self, listbox, row):
+        if not row:
+            log.debug("row is None")
+            return
+        label = row.get_child()
+        log.debug("row selected: %s %s" % (label.type, label.node.get_name()))
+        ## clear out all columns to the right
+        for i in range(listbox.index+1, len(self.columns)):
+            self.liststores[i].remove_all()
+        ## load and show the next column to the right based on the current column
+        if label.type == Constants.label_t_category:
+            child_nodes = label.node.get_child_layer().get_node_list()
+            for c in child_nodes:
+                self.liststores[listbox.index+1].append(c)
+        elif label.type == Constants.label_t_albumartist:
+            child_nodes = label.node.get_child_layer().get_node_list()
+            if not len(child_nodes):
+                self.app.load_albums_by_albumartist(label.node)
+            for c in child_nodes:
+                self.liststores[listbox.index + 1].append(c)
+        elif label.type == Constants.label_t_artist:
+            child_nodes = label.node.get_child_layer().get_node_list()
+            if not len(child_nodes):
+                self.app.load_albums_by_artist(label.node)
+            for c in child_nodes:
+                self.liststores[listbox.index + 1].append(c)
+        elif label.type == Constants.label_t_album:
+            child_nodes = label.node.get_child_layer().get_node_list()
+            if not len(child_nodes):
+                prev_label = self.columns[listbox.index-1].get_selected_row().get_child()
+                if prev_label.type == Constants.label_t_albumartist:
+                    self.app.load_songs_by_album_by_albumartist(label.node, prev_label.node)
+            for c in child_nodes:
+                self.liststores[listbox.index + 1].append(c)
 
 class PlaybackDisplay(Gtk.Box):
     def __init__(self, parent:Gtk.Window, app:Gtk.Application, sound_card:int=None, sound_device:int=None, *args, **kwargs):
@@ -886,13 +957,14 @@ class MpdFrontWindow(Gtk.ApplicationWindow):
     focus_on = "broswer"        ## Either 'playlist' or 'browser'
     initial_resized = False
 
-    def __init__(self, config:configparser, application:Gtk.ApplicationWindow, *args, **kwargs):
+    def __init__(self, config:configparser, application:Gtk.ApplicationWindow, content_tree:data.ContentTree, *args, **kwargs):
         super().__init__(application=application, *args, **kwargs)
         self.config = config
+        self.app = application
+        self.content_tree = content_tree
         self.set_default_size(int(config.get("main", "width")), int(config.get("main", "height")))
         self.set_resizable(False)
         self.set_decorated(False)
-        self.app = application
 
         self.controller = Gtk.EventControllerKey.new()
         self.controller.connect('key-pressed', self.on_key_pressed)
@@ -904,12 +976,10 @@ class MpdFrontWindow(Gtk.ApplicationWindow):
         self.set_child(self.mainpaned)
 
         ## Setup browser columns
-        self.browser_box = ColumnBrowser(selected_callback=self.broswer_row_selected,
-                                         keypress_callback=self.browser_key_pressed, cols=4, spacing=0,
-                                         hexpand=True, vexpand=True)
+        self.browser_box = ColumnBrowser(parent=self, app=self.app, content_tree=self.content_tree,
+                                         cols=Constants.browser_num_columnns, spacing=0, hexpand=True, vexpand=True)
         self.browser_box.set_name("browser")
         self.mainpaned.set_start_child(self.browser_box)
-        self.browser_box.set_column_data(0, Constants.browser_1st_column_rows)
 
         ## Setup bottom half
         self.bottompaned = Gtk.Paned(orientation=Gtk.Orientation.HORIZONTAL)
@@ -918,10 +988,6 @@ class MpdFrontWindow(Gtk.ApplicationWindow):
         self.playback_display = PlaybackDisplay(parent=self, app=self.app, sound_card=self.config.get("main", "sound_card"),
                                                 sound_device=self.config.get("main", "sound_device"))
         self.bottompaned.set_start_child(self.playback_display)
-        mpd_status = self.app.mpd_status()
-        currentsong = self.app.mpd_currentsong()
-        playlistinfo = self.app.mpd_playlistinfo()
-        self.playback_display.update(mpd_status, currentsong, config.get("main", "music_dir"))
 
         ## Setup playlist
         self.playlist_list = PlaylistDisplay(parent=self, app=self.app)
@@ -930,7 +996,6 @@ class MpdFrontWindow(Gtk.ApplicationWindow):
         self.playlist_scroll.set_hexpand(True)
         self.playlist_scroll.set_child(self.playlist_list)
         self.bottompaned.set_end_child(self.playlist_scroll)
-        self.playlist_list.update(playlistinfo, currentsong)
 
         ## Set event handlers
         self.connect("destroy", self.close)
@@ -944,11 +1009,8 @@ class MpdFrontWindow(Gtk.ApplicationWindow):
         self.browser_box.columns[0].select_row(self.browser_box.columns[0].get_row_at_index(0))
 
         ## Setup callbacks
-        self.key_callbacks = {
+        self.key_callbacks = {}
 
-        }
-
-    ##  BEGIN EVENT HANDLERS
     def on_key_pressed(self, controller, keyval, keycode, state):
         """
         Keypress handler for toplevel widget. Responds to global keys for playback control.
@@ -1047,6 +1109,9 @@ class MpdFrontWindow(Gtk.ApplicationWindow):
                     self.resize_event_on = False
                 else:
                     self.bottompaned.set_position(0)
+
+            elif keyval == ord('b'):
+                data.Dumper.dump(self.content_tree.get_top_layer())
 
             #elif keyval == ord('v'):
             #    self.set_dividers()
@@ -1190,8 +1255,6 @@ class MpdFrontWindow(Gtk.ApplicationWindow):
                     rows.append(f)
                 self.browser_box.set_column_data(listbox.index + 1, rows)
                 self.browser_box.columns[listbox.index + 1].set_sort_func(listbox_cmp, None, False)
-
-    ##  END EVENT HANDLERS
 
     def add_to_playlist(self):
         """

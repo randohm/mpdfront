@@ -85,6 +85,7 @@ class MpdFrontApp(Gtk.Application):
         self.load_albums()
         self.load_genres()
         self.load_files_list()
+        """
         for i in range(5):
             albumartist = self.content_tree.get_top_layer().get_node(Constants.topnode_name_albumartists).get_child_layer().get_node_list()[i]
             self.load_albums_by_albumartist(albumartist)
@@ -108,6 +109,7 @@ class MpdFrontApp(Gtk.Application):
                 self.load_songs_by_album_by_genre(a, genre)
 
             files_list = self.content_tree.get_top_layer().get_node(Constants.topnode_name_files).get_child_layer().get_node_list()[i]
+        """
         #data.Dumper.dump(self.content_tree.get_top_layer())
 
         self.thread_comms_timeout_id = GLib.timeout_add(Constants.check_thread_comms_interval, self.idle_thread_comms_handler)
@@ -128,7 +130,7 @@ class MpdFrontApp(Gtk.Application):
 
     def on_activate(self, app):
         #try:
-        self.window = MpdFrontWindow(application=self, config=self.config)
+        self.window = MpdFrontWindow(application=self, config=self.config, content_tree=self.content_tree)
         #except Exception as e:
         #    log.critical("could not create main window: %s" % e)
         #    self.quit()
@@ -146,6 +148,8 @@ class MpdFrontApp(Gtk.Application):
         self.add_window(self.window)
         self.window.present()
         self.window.set_dividers()
+        self.refresh_playlist()
+        self.refresh_playback()
 
     def on_quit(self, app):
         self.quit()
@@ -343,6 +347,15 @@ class MpdFrontApp(Gtk.Application):
         self.window.playback_display.update(mpd_status, currentsong, self.config.get("main", "music_dir"))
         return True
 
+    def refresh_playlist(self):
+        """
+        Updates playback, time, info and progress bar.
+        """
+        playlistinfo = self.mpd_client.playlistinfo()
+        currentsong = self.mpd_client.currentsong()
+        self.window.playlist_list.update(playlistinfo, currentsong)
+        return True
+
     def get_files_list(self, path=""):
         files = self.mpd_client.lsinfo(path)
         rows = []
@@ -393,7 +406,7 @@ class MpdFrontApp(Gtk.Application):
                 return
             for r in recv:
                 if r:
-                    n.get_child_layer().add_node(data.ContentTreeNode({ 'name': r }))
+                    n.get_child_layer().add_node(data.ContentTreeNode({ 'name': r, 'type': Constants.label_t_albumartist }))
         except Exception as e:
             log.error("could not load albumartists" % e)
 
@@ -402,7 +415,7 @@ class MpdFrontApp(Gtk.Application):
             recv = self.mpd_list("album", "albumartist", albumartist.get_name())
             #log.debug("albums by albumartist '%s': %s" % (albumartist.get_name(), recv))
             for r in recv:
-                albumartist.get_child_layer().add_node(data.ContentTreeNode({ 'name': r }))
+                albumartist.get_child_layer().add_node(data.ContentTreeNode({ 'name': r, 'type': Constants.label_t_album }))
         except Exception as e:
             log.error("could not load albums by albumartist '%s': %s" % (albumartist.get_name(), e))
 
@@ -411,7 +424,7 @@ class MpdFrontApp(Gtk.Application):
             recv = self.mpd_find("albumartist", albumartist.get_name(), "album", album.get_name())
             #log.debug("songs by album by albumartist '%s' '%s': %s" % (album.get_name(), albumartist.get_name(), recv))
             for r in recv:
-                new_node = data.ContentTreeNode({ 'name': r })
+                new_node = data.ContentTreeNode({ 'name': r, 'type': Constants.label_t_song })
                 new_node.set_name(r['title'])
                 album.get_child_layer().add_node(new_node)
         except Exception as e:
@@ -430,7 +443,7 @@ class MpdFrontApp(Gtk.Application):
                 return
             for r in recv:
                 if r:
-                    n.get_child_layer().add_node(data.ContentTreeNode({ 'name': r }))
+                    n.get_child_layer().add_node(data.ContentTreeNode({ 'name': r, 'type': Constants.label_t_artist }))
         except Exception as e:
             log.error("could not load artists" % e)
 
@@ -439,7 +452,7 @@ class MpdFrontApp(Gtk.Application):
             recv = self.mpd_list("album", "artist", artist.get_name())
             #log.debug("albums by artist '%s': %s" % (artist.get_name(), recv))
             for r in recv:
-                artist.get_child_layer().add_node(data.ContentTreeNode({ 'name': r }))
+                artist.get_child_layer().add_node(data.ContentTreeNode({ 'name': r, 'type': Constants.label_t_album }))
         except Exception as e:
             log.error("could not load albums by artist '%s': %s" % (artist.get_name(), e))
 
@@ -448,7 +461,7 @@ class MpdFrontApp(Gtk.Application):
             recv = self.mpd_find("artist", artist.get_name(), "album", album.get_name())
             #log.debug("songs by album by artist '%s' '%s': %s" % (album.get_name(), artist.get_name(), recv))
             for r in recv:
-                new_node = data.ContentTreeNode({ 'name': r })
+                new_node = data.ContentTreeNode({ 'name': r, 'type': Constants.label_t_song })
                 new_node.set_name(r['title'])
                 album.get_child_layer().add_node(new_node)
         except Exception as e:
@@ -467,7 +480,7 @@ class MpdFrontApp(Gtk.Application):
                 return
             for r in recv:
                 if r:
-                    n.get_child_layer().add_node(data.ContentTreeNode({ 'name': r }))
+                    n.get_child_layer().add_node(data.ContentTreeNode({ 'name': r, 'type': Constants.label_t_album }))
         except Exception as e:
             log.error("could not load albums" % e)
 
@@ -476,7 +489,7 @@ class MpdFrontApp(Gtk.Application):
             recv = self.mpd_find("album", album.get_name())
             #log.debug("songs by album '%s': %s" % (album.get_name(), recv))
             for r in recv:
-                new_node = data.ContentTreeNode({ 'name': r })
+                new_node = data.ContentTreeNode({ 'name': r, 'type': Constants.label_t_song })
                 new_node.set_name(r['title'])
                 album.get_child_layer().add_node(new_node)
         except Exception as e:
@@ -495,7 +508,7 @@ class MpdFrontApp(Gtk.Application):
                 return
             for r in recv:
                 if r:
-                    n.get_child_layer().add_node(data.ContentTreeNode({ 'name': r }))
+                    n.get_child_layer().add_node(data.ContentTreeNode({ 'name': r, 'type': Constants.label_t_genre }))
         except Exception as e:
             log.error("could not load genres" % e)
 
@@ -504,7 +517,7 @@ class MpdFrontApp(Gtk.Application):
             recv = self.mpd_list("album", "genre", genre.get_name())
             #log.debug("albums by genre '%s': %s" % (genre.get_name(), recv))
             for r in recv:
-                genre.get_child_layer().add_node(data.ContentTreeNode({ 'name': r }))
+                genre.get_child_layer().add_node(data.ContentTreeNode({ 'name': r, 'type': Constants.label_t_album }))
         except Exception as e:
             log.error("could not load albums by genre '%s': %s" % (genre.get_name(), e))
 
@@ -513,12 +526,11 @@ class MpdFrontApp(Gtk.Application):
             recv = self.mpd_find("genre", genre.get_name(), "album", album.get_name())
             #log.debug("songs by album by genre '%s' '%s': %s" % (album.get_name(), genre.get_name(), recv))
             for r in recv:
-                new_node = data.ContentTreeNode({ 'name': r })
+                new_node = data.ContentTreeNode({ 'name': r, 'type': Constants.label_t_song })
                 new_node.set_name(r['title'])
                 album.get_child_layer().add_node(new_node)
         except Exception as e:
             log.error("could not load songs by album by genre '%s', '%s': %s" % (genre.get_name(), album.get_name(), e))
-
 
     # by files
     def load_files_list(self):
