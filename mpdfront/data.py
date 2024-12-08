@@ -6,8 +6,28 @@ from .constants import Constants
 
 log = logging.getLogger(__name__)
 
-class ContentTreeLayer:
-    None
+class ContentTreeLayer(Gio.ListStore):
+    _by_name:dict = None
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._by_name = {}
+
+    def append(self, node:GObject.GObject):
+        #log.debug("adding node with metadata: %s" % node.metadata)
+        super().append(node)
+        if node.get_name() in self._by_name.keys():
+            log.info("node by name '%s' already exists" % node.get_name())
+        else:
+            self._by_name[node.get_name()] = node
+
+    def get_node_names(self):
+        return self._by_name.keys()
+
+    def get_node(self, name:str):
+        if name in self._by_name.keys():
+            return self._by_name[name]
+        return None
 
 class ContentTreeNode(GObject.GObject):
     _child_layer:ContentTreeLayer = None
@@ -20,6 +40,8 @@ class ContentTreeNode(GObject.GObject):
         self._child_layer = ContentTreeLayer()
         if 'name' in metadata.keys():
             self._name = metadata['name']
+        if 'type' in metadata.keys():
+            self._type = metadata['name']
 
     def get_child_layer(self):
         return self._child_layer
@@ -30,31 +52,12 @@ class ContentTreeNode(GObject.GObject):
     def set_name(self, name:str):
         self._name = name
 
-class ContentTreeLayer:
-    _nodes:list = None
-    _by_name:dict = None
+    def get_type(self):
+        return self._type
 
-    def __init__(self):
-        self._nodes = []
-        self._by_name = {}
+    def set_type(self, type:str):
+        self._type = type
 
-    def add_node(self, node:ContentTreeNode):
-        #log.debug("adding node with metadata: %s" % node.metadata)
-        self._nodes.append(node)
-        if node.get_name() in self._by_name.keys():
-            log.error("node by name '%s' already exists" % node.get_name())
-        self._by_name[node.get_name()] = node
-
-    def get_node_list(self):
-        return self._nodes
-
-    def get_node_names(self):
-        return self._by_name.keys()
-
-    def get_node(self, name:str):
-        if name in self._by_name.keys():
-            return self._by_name[name]
-        return None
 
 class ContentTree:
     _layer:ContentTreeLayer = None
@@ -73,19 +76,23 @@ class LayerFactory:
         layer = ContentTreeLayer()
         for m in metadata_list:
             try:
-                layer.add_node(ContentTreeNode(m))
+                layer.append(ContentTreeNode(m))
             except Exception as e:
                 log.error("could not create node: %s" % e)
         return layer
 
 class Dumper:
     def dump(tree:ContentTreeLayer, indent:str=""):
-        node_list = tree.get_node_list()
-        for n in node_list:
+        n_items = tree.get_n_items()
+        for i in range(0, n_items):
+            n = tree.get_item(i)
+            if not n:
+                break
             i_char1 = "|"
             i_char2 = "|"
-            if n == node_list[-1]:
+            if i == n_items - 1:
                 i_char1 = "+"
                 i_char2 = " "
             sys.stdout.write("%s%s-%s\n" % (indent, i_char1, n.get_name()))
             Dumper.dump(n.get_child_layer(), indent+i_char2+"  ")
+            i += 1

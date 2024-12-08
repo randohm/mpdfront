@@ -278,7 +278,10 @@ class IndexedListBox(Gtk.ListBox):
         Sets the index of the ListBox
         :param index:  int, the ListBox's position in the parent's list
         """
-        self.index = index
+        self._index = index
+
+    def get_index(self):
+        return self._index
 
 class ColumnBrowser(Gtk.Box):
     """
@@ -303,7 +306,7 @@ class ColumnBrowser(Gtk.Box):
         self.content_tree = content_tree
         self.set_spacing(spacing)
         self.columns = []
-        self.liststores = []
+        ## Initialize the columns
         for i in range(0, cols):
             scroll = Gtk.ScrolledWindow()
             listbox = IndexedListBox()
@@ -311,17 +314,12 @@ class ColumnBrowser(Gtk.Box):
             listbox.set_vexpand(vexpand)
             listbox.set_index(i)
             listbox.connect("row-selected", self.on_row_selected)
-            #listbox.connect("row-activated", keypress_callback)
+            listbox.connect("row-activated", self.on_row_activated)
             scroll.set_child(listbox)
-            liststore = Gio.ListStore()
-            listbox.bind_model(model=liststore, create_widget_func=self.create_list_label)
             self.append(scroll)
             self.columns.append(listbox)
-            self.liststores.append(liststore)
-
-        ## initialize 1st column
-        for n in self.content_tree.get_top_layer().get_node_list():
-            self.liststores[0].append(n)
+        ## Initialize data in 1st column
+        self.columns[0].bind_model(model=content_tree.get_top_layer(), create_widget_func=self.create_list_label)
 
         self.controller = Gtk.EventControllerKey.new()
         self.controller.connect('key-pressed', self.on_key_pressed)
@@ -342,28 +340,8 @@ class ColumnBrowser(Gtk.Box):
                 ret.append({'type': child.type, 'value': child.get_text(), 'data': child.data})
         return ret
 
-    def set_column_data(self, col_index, data, clear_rest=True):
-        """
-        Populates a column at col_index.
-        :param col_index:  int, column index
-        :param data:  dictionary
-        :param clear_rest: boolean, True: clear all columns to the left as well. default: True
-        """
-        return
-        if clear_rest:
-            for i in range(col_index, len(self.columns)):
-                self.columns[i].remove_all()
-
-        for i in data:
-            #log.debug("data: %s" % i)
-            label = MetadataLabel(label=i['value'])
-            label.set_metatype(i['type'])
-            label.set_metadata(i['data'])
-            label.set_halign(Gtk.Align.START)
-            self.columns[col_index].append(label)
-
     def create_list_label(self, node):
-        log.debug("creating label for: %s" % node.get_name())
+        #log.debug("creating label for: %s" % node.get_name())
         label = MetadataLabel(label=node.get_name())
         label.set_content_node(node)
         label.set_metatype(node.metadata['type'])
@@ -393,33 +371,44 @@ class ColumnBrowser(Gtk.Box):
         label = row.get_child()
         log.debug("row selected: %s %s" % (label.type, label.node.get_name()))
         ## clear out all columns to the right
-        for i in range(listbox.index+1, len(self.columns)):
-            self.liststores[i].remove_all()
+        for i in range(listbox.get_index()+1, len(self.columns)):
+            self.columns[i].bind_model(model=None, create_widget_func=None)
         ## load and show the next column to the right based on the current column
         if label.type == Constants.label_t_category:
-            child_nodes = label.node.get_child_layer().get_node_list()
-            for c in child_nodes:
-                self.liststores[listbox.index+1].append(c)
+            self.columns[listbox.get_index()+1].bind_model(model=label.node.get_child_layer(), create_widget_func=self.create_list_label)
         elif label.type == Constants.label_t_albumartist:
-            child_nodes = label.node.get_child_layer().get_node_list()
-            if not len(child_nodes):
+            if not label.node.get_child_layer().get_n_items():
                 self.app.load_albums_by_albumartist(label.node)
-            for c in child_nodes:
-                self.liststores[listbox.index + 1].append(c)
+            self.columns[listbox.get_index()+1].bind_model(model=label.node.get_child_layer(), create_widget_func=self.create_list_label)
         elif label.type == Constants.label_t_artist:
-            child_nodes = label.node.get_child_layer().get_node_list()
-            if not len(child_nodes):
+            if not label.node.get_child_layer().get_n_items():
                 self.app.load_albums_by_artist(label.node)
-            for c in child_nodes:
-                self.liststores[listbox.index + 1].append(c)
+            self.columns[listbox.get_index() + 1].bind_model(model=label.node.get_child_layer(), create_widget_func=self.create_list_label)
+        elif label.type == Constants.label_t_genre:
+            if not label.node.get_child_layer().get_n_items():
+                self.app.load_albums_by_genre(label.node)
+            self.columns[listbox.get_index() + 1].bind_model(model=label.node.get_child_layer(), create_widget_func=self.create_list_label)
         elif label.type == Constants.label_t_album:
-            child_nodes = label.node.get_child_layer().get_node_list()
-            if not len(child_nodes):
-                prev_label = self.columns[listbox.index-1].get_selected_row().get_child()
+            if not label.node.get_child_layer().get_n_items():
+                prev_label = self.columns[listbox.get_index()-1].get_selected_row().get_child()
                 if prev_label.type == Constants.label_t_albumartist:
                     self.app.load_songs_by_album_by_albumartist(label.node, prev_label.node)
-            for c in child_nodes:
-                self.liststores[listbox.index + 1].append(c)
+                elif prev_label.type == Constants.label_t_artist:
+                    self.app.load_songs_by_album_by_artist(label.node, prev_label.node)
+                elif prev_label.type == Constants.label_t_genre:
+                    self.app.load_songs_by_album_by_genre(label.node, prev_label.node)
+                elif prev_label.type == Constants.label_t_category:
+                    self.app.load_songs_by_album(label.node)
+            self.columns[listbox.get_index()+1].bind_model(model=label.node.get_child_layer(), create_widget_func=self.create_list_label)
+
+    def on_row_activated(self, listbox, listboxrow):
+        try:
+            node = listboxrow.get_child().node
+            log.debug("node: %s" % (node))
+            if node.metadata['type'] in ('song', 'album'):
+                self.parent.add_to_playlist()
+        except Exception as e:
+            log.error("error on keypress (%s): %s" % (type(e).__name__, e))
 
 class PlaybackDisplay(Gtk.Box):
     def __init__(self, parent:Gtk.Window, app:Gtk.Application, sound_card:int=None, sound_device:int=None, *args, **kwargs):
@@ -485,7 +474,7 @@ class PlaybackDisplay(Gtk.Box):
         self.current_time_label.set_name("current-time")
         self.current_time_label.set_halign(Gtk.Align.START)
         self.current_time_label.set_valign(Gtk.Align.END)
-        self.current_time_label.set_wrap(True)
+        self.current_time_label.set_wrap(False)
         self.current_time_label.set_hexpand(False)
         self.current_time_label.set_vexpand(False)
         self.current_time_label.set_justify(Gtk.Justification.LEFT)
@@ -947,7 +936,7 @@ class PlaylistTrack(GObject.GObject):
         for k in song.keys():
             setattr(self, k, song[k])
 
-class MpdFrontWindow(Gtk.ApplicationWindow):
+class MpdFrontWindow(Gtk.Window):
     last_audiofile = ""         ## Tracks albumart for display
     browser_full = False        ## Tracks if the browser is fullscreen
     browser_hidden = False      ## Tracks if the browser is hidden
@@ -1127,134 +1116,6 @@ class MpdFrontWindow(Gtk.ApplicationWindow):
             #    log.debug("key press: %s" % keyval)
         except Exception as e:
             log.error("error on keypress (%s): %s" % (type(e).__name__, e))
-
-    def browser_key_pressed(self, controller, keyval, keycode, state):
-        """
-        Event handler for browser box key presses
-        """
-        if keyval == Gdk.KEY_Return:
-            #log.debug("browser key: ENTER")
-            self.add_to_playlist()
-
-        elif keyval == ord(self.config.get("keys", "info")):
-            self.browser_info_popup()
-
-    def broswer_row_selected(self, listbox, row):
-        """
-        Handler for selection event in browser_box
-        """
-        if not row:
-            return
-
-        child = row.get_child()
-        if child:
-            metatype = child.type
-            value = child.get_text()
-            log.debug("col %d, %s: %s" % (listbox.index, metatype, value))
-            if metatype == "category":
-                if value == "Album Artists":
-                    artists = self.app.get_albumartists()
-                    #log.debug("albumartists: %s" % artists)
-                    rows = []
-                    for a in artists:
-                        rows.append({'type': 'albumartist', 'value': a, 'data': None})
-                    self.browser_box.set_column_data(listbox.index + 1, rows)
-                    self.browser_box.columns[listbox.index + 1].set_sort_func(listbox_cmp_filtered, None, False)
-                elif value == "Artists":
-                    artists = self.app.get_artists()
-                    #log.debug("artists: %s" % artists)
-                    rows = []
-                    for a in artists:
-                        rows.append({'type': 'artist', 'value': a, 'data': None})
-                    self.browser_box.set_column_data(listbox.index + 1, rows)
-                    self.browser_box.columns[listbox.index + 1].set_sort_func(listbox_cmp_filtered, None, False)
-                elif value == "Albums":
-                    albums = self.app.get_albums()
-                    rows = []
-                    for a in albums:
-                        rows.append({'type': 'album', 'value': a, 'data': None})
-                    self.browser_box.set_column_data(listbox.index + 1, rows)
-                    self.browser_box.columns[listbox.index + 1].set_sort_func(listbox_cmp_filtered, None, False)
-                elif value == "Genres":
-                    genres = self.app.get_genres()
-                    rows = []
-                    for g in genres:
-                        rows.append({'type': 'genre', 'value': g, 'data': None})
-                    self.browser_box.set_column_data(listbox.index + 1, rows)
-                    self.browser_box.columns[listbox.index + 1].set_sort_func(listbox_cmp, None, False)
-                elif value == "Files":
-                    files = self.app.get_files_list()
-                    #log.debug("files: %s" % files)
-                    rows = []
-                    for f in files:
-                        subf = self.app.get_files_list(f['data']['dir'])
-                        for f2 in subf:
-                            rows.append(
-                                {'type': f2['type'], 'value': f['value'] + "/" + f2['value'], 'data': f2['data'], })
-                    self.browser_box.set_column_data(listbox.index + 1, rows)
-                    self.browser_box.columns[listbox.index + 1].set_sort_func(listbox_cmp, None, False)
-                else:
-                    self.browser_box.set_column_data(listbox.index + 1, [])
-            elif metatype == "albumartist":
-                albums = self.app.get_albums_by_albumartist(value)
-                #log.debug("albums: %s" % albums)
-                rows = []
-                for a in albums:
-                    rows.append({'type': 'album', 'value': a, 'data': None})
-                self.browser_box.set_column_data(listbox.index + 1, rows)
-                self.browser_box.columns[listbox.index + 1].set_sort_func(listbox_cmp, None, False)
-            elif metatype == "artist":
-                albums = self.app.get_albums_by_artist(value)
-                #log.debug("albums: %s" % albums)
-                rows = []
-                for a in albums:
-                    rows.append({'type': 'album', 'value': a, 'data': None})
-                self.browser_box.set_column_data(listbox.index + 1, rows)
-                self.browser_box.columns[listbox.index + 1].set_sort_func(listbox_cmp, None, False)
-            elif metatype == "genre":
-                albums = self.app.get_albums_by_genre(value)
-                #log.debug("albums: %s" % albums)
-                rows = []
-                for a in albums:
-                    rows.append({'type': 'album', 'value': a, 'data': None})
-                self.browser_box.set_column_data(listbox.index + 1, rows)
-                self.browser_box.columns[listbox.index + 1].set_sort_func(listbox_cmp, None, False)
-            elif metatype == "album":
-                selected_items = self.browser_box.get_selected_rows()
-                #log.debug("selected items: %s" % selected_items)
-                last_type = selected_items[listbox.index - 1]['type']
-                last_value = selected_items[listbox.index - 1]['value']
-                #log.debug("%s %s" % (value, last_value))
-                songs = None
-                if last_type == "albumartist":
-                    songs = self.app.get_songs_by_album_by_albumartist(value, last_value)
-                elif last_type == "artist":
-                    songs = self.app.get_songs_by_album_by_artist(value, last_value)
-                elif last_type == "category":
-                    songs = self.app.get_songs_by_album(value)
-                elif last_type == "genre":
-                    songs = self.app.get_songs_by_album_by_genre(value, last_value)
-                rows = []
-                if songs:
-                    for s in songs:
-                        #log.debug(s)
-                        track = ""
-                        if 'track' in s:
-                            track = re.sub(r'/.*', '', s['track'])
-                        if 'title' in s:
-                            rows.append({'type': 'song', 'value': track + " " + s['title'], 'data': s})
-                        else:
-                            rows.append({'type': 'song', 'value': os.path.basename(s['file']), 'data': s})
-                self.browser_box.set_column_data(listbox.index + 1, rows)
-                self.browser_box.columns[listbox.index + 1].set_sort_func(listbox_cmp_by_track, None, False)
-            elif metatype == "directory":
-                files = self.app.get_files_list(child.data['dir'])
-                rows = []
-                for f in files:
-                    #log.debug("directory: %s" % f)
-                    rows.append(f)
-                self.browser_box.set_column_data(listbox.index + 1, rows)
-                self.browser_box.columns[listbox.index + 1].set_sort_func(listbox_cmp, None, False)
 
     def add_to_playlist(self):
         """

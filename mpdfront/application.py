@@ -25,7 +25,6 @@ class MpdFrontApp(Gtk.Application):
         self.card_id = int(config.get("main", "sound_card"))
         self.device_id = int(config.get("main", "sound_device"))
         self.idle_queue = queue.Queue()
-
         if host:
             self.host = host
         else:
@@ -34,6 +33,8 @@ class MpdFrontApp(Gtk.Application):
             self.port = port
         else:
             self.port = int(config.get("main", "port"))
+
+        ## Connect to MPD
         try:
             self.mpd_client = mpd.Client(self.host, self.port)
             self.mpd_idle_thread = mpd.IdleClientThread(host=self.host, port=self.port, queue=self.idle_queue, name="idleThread")
@@ -41,6 +42,7 @@ class MpdFrontApp(Gtk.Application):
             log.error("could not connect to mpd: %s" % e)
             raise e
 
+        ## Define callbacks to handle mpd commands
         self._mpd_callbacks = {
             'add': self.mpd_client.add,
             'clear': self.mpd_client.clear,
@@ -79,39 +81,15 @@ class MpdFrontApp(Gtk.Application):
         self.mpd_outputs = self.mpd_outputs()
         log.debug("mpd outputs: %s" % self.mpd_outputs)
 
+        ## create and initialize content tree
         self.content_tree = data.ContentTree(Constants.browser_1st_column_rows)
         self.load_albumartists()
         self.load_artists()
         self.load_albums()
         self.load_genres()
         self.load_files_list()
-        """
-        for i in range(5):
-            albumartist = self.content_tree.get_top_layer().get_node(Constants.topnode_name_albumartists).get_child_layer().get_node_list()[i]
-            self.load_albums_by_albumartist(albumartist)
-            for j in range(len(albumartist.get_child_layer().get_node_list())):
-                a = albumartist.get_child_layer().get_node_list()[j]
-                self.load_songs_by_album_by_albumartist(a, albumartist)
 
-            artist = self.content_tree.get_top_layer().get_node(Constants.topnode_name_artists).get_child_layer().get_node_list()[i]
-            self.load_albums_by_artist(artist)
-            for j in range(len(artist.get_child_layer().get_node_list())):
-                a = artist.get_child_layer().get_node_list()[j]
-                self.load_songs_by_album_by_artist(a, artist)
-
-            album = self.content_tree.get_top_layer().get_node(Constants.topnode_name_albums).get_child_layer().get_node_list()[i]
-            self.load_songs_by_album(album)
-
-            genre = self.content_tree.get_top_layer().get_node(Constants.topnode_name_genres).get_child_layer().get_node_list()[i]
-            self.load_albums_by_genre(genre)
-            for j in range(len(genre.get_child_layer().get_node_list())):
-                a = genre.get_child_layer().get_node_list()[j]
-                self.load_songs_by_album_by_genre(a, genre)
-
-            files_list = self.content_tree.get_top_layer().get_node(Constants.topnode_name_files).get_child_layer().get_node_list()[i]
-        """
-        #data.Dumper.dump(self.content_tree.get_top_layer())
-
+        ## Set timers
         self.thread_comms_timeout_id = GLib.timeout_add(Constants.check_thread_comms_interval, self.idle_thread_comms_handler)
         self.thread_comms_timeout_id = GLib.timeout_add(Constants.playback_update_interval_play, self.refresh_playback)
 
@@ -153,190 +131,6 @@ class MpdFrontApp(Gtk.Application):
 
     def on_quit(self, app):
         self.quit()
-
-    def get_artists(self):
-        """
-        Gets the list of artists from mpd, enters artists into db_cache if needed
-        :return: list of artist names
-        """
-        if not len(DataCache.cache['Artists']):
-            recv = self.mpd_client.list("artist")
-            for i in recv:
-                if i == "":
-                    continue
-                DataCache.cache['Artists'][i] = {}
-        return DataCache.cache['Artists'].keys()
-
-    def get_albumartists(self):
-        """
-        Gets the list of albumartists from mpd, enters albumartists into db_cache if needed
-        :return: list of artist names
-        """
-        if not len(DataCache.cache['Album Artists']):
-            recv = self.mpd_client.list("albumartist")
-            #log.debug("received albumartists: %s" % recv)
-            for i in recv:
-                if i == "":
-                    continue
-                DataCache.cache['Album Artists'][i] = {}
-        return DataCache.cache['Album Artists'].keys()
-
-    def get_albums(self):
-        """
-        Gets the list of albums from mpd, enters albums into db_cache if needed
-        Returns:
-            list of album names
-        """
-        if not len(DataCache.cache['Albums']):
-            recv = self.mpd_client.list("album")
-            for i in recv:
-                if i == "":
-                    continue
-                DataCache.cache['Albums'][i] = {}
-        return DataCache.cache['Albums'].keys()
-
-    def get_albums_by_artist(self, artist:str):
-        """
-        Gets the list of albums by an artist from mpd, enters albums into db_cache if needed
-        Args:
-            artist: name of artist whose albums to return 
-        Returns:
-            list of album names by an artist
-        """
-        if not artist:
-            log.debug("value for artist is None")
-            return None
-        if not artist in DataCache.cache['Artists']:
-            DataCache.cache['Artists'][artist] = {}
-        if not len(DataCache.cache['Artists'][artist]):
-            recv = self.mpd_client.list("album", artist)
-            for i in recv:
-                if i == "":
-                    continue
-                DataCache.cache['Artists'][artist][i] = []
-        return DataCache.cache['Artists'][artist]
-
-    def get_albums_by_albumartist(self, artist:str):
-        """
-        Gets the list of albums by an albumartist from mpd, enters albums into db_cache if needed
-        Args:
-            artist: name of artist whose albums to return 
-        Returns:
-            list of album names by an albumartist
-        """
-        if not artist:
-            log.debug("value for artist is None")
-            return None
-        if not artist in DataCache.cache['Album Artists']:
-            DataCache.cache['Album Artists'][artist] = {}
-
-        if not len(DataCache.cache['Album Artists'][artist]):
-            recv = self.mpd_client.list("album", "albumartist", artist)
-            for i in recv:
-                if i == "":
-                    continue
-                DataCache.cache['Album Artists'][artist][i] = []
-        return DataCache.cache['Album Artists'][artist]
-
-    def get_songs_by_album_by_artist(self, album:str, artist:str):
-        """
-        Finds songs by album and artist.
-        Args:
-            album: name of the album
-            artist: name of the artist
-        Returns:
-            list of dictionaries containing song data
-        """
-        if not len(DataCache.cache['Artists'][artist][album]):
-            recv = self.mpd_client.find("artist", artist, "album", album)
-            for i in recv:
-                if i == "":
-                    continue
-                DataCache.cache['Artists'][artist][album].append(i)
-        return DataCache.cache['Artists'][artist][album]
-
-    def get_songs_by_album_by_genre(self, album:str, genre:str):
-        """
-        Finds songs by album and artist.
-        Args:
-            album: name of the album
-            genre: name of the genre
-        Returns:
-            list of dictionaries containing song data
-        """
-        if not len(DataCache.cache['Genres'][genre][album]):
-            recv = self.mpd_client.find("genre", genre, "album", album)
-            for i in recv:
-                if i == "":
-                    continue
-                DataCache.cache['Genres'][genre][album].append(i)
-        return DataCache.cache['Genres'][genre][album]
-
-    def get_songs_by_album_by_albumartist(self, album:str, artist:str):
-        """
-        Finds songs by album and albumartist.
-        Args:
-            album: name of the album
-            artist: name of the albumartist
-        Returns:
-            list of dictionaries containing song data
-        """
-        if not len(DataCache.cache['Album Artists'][artist][album]):
-            recv = self.mpd_client.find("albumartist", artist, "album", album)
-            for i in recv:
-                if i == "":
-                    continue
-                DataCache.cache['Album Artists'][artist][album].append(i)
-        return DataCache.cache['Album Artists'][artist][album]
-
-    def get_songs_by_album(self, album:str):
-        """
-        Finds songs by album.
-        Args:
-            album: name of the album
-        Returns:
-            list of dictionaries containing song data
-        """
-        if not len(DataCache.cache['Albums'][album]):
-            DataCache.cache['Albums'][album] = []
-            recv = self.mpd_client.find("album", album)
-            for i in recv:
-                if i == "":
-                    continue
-                DataCache.cache['Albums'][album].append(i)
-        return DataCache.cache['Albums'][album]
-
-    def get_genres(self):
-        """
-        Gets the list of genres from mpd, enters artists into db_cache if needed
-        Returns:
-            list of genres
-        """
-        if not len(DataCache.cache['Genres']):
-            recv = self.mpd_client.list("genre")
-            for i in recv:
-                if i == "":
-                    continue
-                DataCache.cache['Genres'][i] = {}
-        return DataCache.cache['Genres'].keys()
-
-    def get_albums_by_genre(self, genre:str):
-        """
-        Gets the list of albums by genre from mpd, enters albums into db_cache if needed
-
-        Args:
-            genre: genre of albums to get
-
-        Returns:
-            list of album names by an genre
-        """
-        if not len(DataCache.cache['Genres'][genre]):
-            recv = self.mpd_client.list("album", "genre", genre)
-            for i in recv:
-                if i == "":
-                    continue
-                DataCache.cache['Genres'][genre][i] = []
-        return DataCache.cache['Genres'][genre]
 
     def refresh_playback(self):
         """
@@ -392,7 +186,7 @@ class MpdFrontApp(Gtk.Application):
                                                         self.config.get("main", "music_dir"))
         return True
 
-    ## Load data into content tree
+    ## Content tree data loaders
     ## by albumartist
     def load_albumartists(self):
         try:
@@ -406,7 +200,7 @@ class MpdFrontApp(Gtk.Application):
                 return
             for r in recv:
                 if r:
-                    n.get_child_layer().add_node(data.ContentTreeNode({ 'name': r, 'type': Constants.label_t_albumartist }))
+                    n.get_child_layer().append(data.ContentTreeNode({ 'name': r, 'type': Constants.label_t_albumartist }))
         except Exception as e:
             log.error("could not load albumartists" % e)
 
@@ -415,7 +209,7 @@ class MpdFrontApp(Gtk.Application):
             recv = self.mpd_list("album", "albumartist", albumartist.get_name())
             #log.debug("albums by albumartist '%s': %s" % (albumartist.get_name(), recv))
             for r in recv:
-                albumartist.get_child_layer().add_node(data.ContentTreeNode({ 'name': r, 'type': Constants.label_t_album }))
+                albumartist.get_child_layer().append(data.ContentTreeNode({ 'name': r, 'type': Constants.label_t_album }))
         except Exception as e:
             log.error("could not load albums by albumartist '%s': %s" % (albumartist.get_name(), e))
 
@@ -424,9 +218,8 @@ class MpdFrontApp(Gtk.Application):
             recv = self.mpd_find("albumartist", albumartist.get_name(), "album", album.get_name())
             #log.debug("songs by album by albumartist '%s' '%s': %s" % (album.get_name(), albumartist.get_name(), recv))
             for r in recv:
-                new_node = data.ContentTreeNode({ 'name': r, 'type': Constants.label_t_song })
-                new_node.set_name(r['title'])
-                album.get_child_layer().add_node(new_node)
+                #log.debug("song: %s" % r)
+                album.get_child_layer().append(self.create_song_node(r))
         except Exception as e:
             log.error("could not load songs by albums by albumartist '%s', '%s': %s" % (albumartist.get_name(), album.get_name(), e))
 
@@ -443,7 +236,7 @@ class MpdFrontApp(Gtk.Application):
                 return
             for r in recv:
                 if r:
-                    n.get_child_layer().add_node(data.ContentTreeNode({ 'name': r, 'type': Constants.label_t_artist }))
+                    n.get_child_layer().append(data.ContentTreeNode({ 'name': r, 'type': Constants.label_t_artist }))
         except Exception as e:
             log.error("could not load artists" % e)
 
@@ -452,7 +245,7 @@ class MpdFrontApp(Gtk.Application):
             recv = self.mpd_list("album", "artist", artist.get_name())
             #log.debug("albums by artist '%s': %s" % (artist.get_name(), recv))
             for r in recv:
-                artist.get_child_layer().add_node(data.ContentTreeNode({ 'name': r, 'type': Constants.label_t_album }))
+                artist.get_child_layer().append(data.ContentTreeNode({ 'name': r, 'type': Constants.label_t_album }))
         except Exception as e:
             log.error("could not load albums by artist '%s': %s" % (artist.get_name(), e))
 
@@ -461,9 +254,7 @@ class MpdFrontApp(Gtk.Application):
             recv = self.mpd_find("artist", artist.get_name(), "album", album.get_name())
             #log.debug("songs by album by artist '%s' '%s': %s" % (album.get_name(), artist.get_name(), recv))
             for r in recv:
-                new_node = data.ContentTreeNode({ 'name': r, 'type': Constants.label_t_song })
-                new_node.set_name(r['title'])
-                album.get_child_layer().add_node(new_node)
+                album.get_child_layer().append(self.create_song_node(r))
         except Exception as e:
             log.error("could not load songs by album by artist '%s', '%s': %s" % (artist.get_name(), album.get_name(), e))
 
@@ -480,7 +271,7 @@ class MpdFrontApp(Gtk.Application):
                 return
             for r in recv:
                 if r:
-                    n.get_child_layer().add_node(data.ContentTreeNode({ 'name': r, 'type': Constants.label_t_album }))
+                    n.get_child_layer().append(data.ContentTreeNode({ 'name': r, 'type': Constants.label_t_album }))
         except Exception as e:
             log.error("could not load albums" % e)
 
@@ -489,9 +280,7 @@ class MpdFrontApp(Gtk.Application):
             recv = self.mpd_find("album", album.get_name())
             #log.debug("songs by album '%s': %s" % (album.get_name(), recv))
             for r in recv:
-                new_node = data.ContentTreeNode({ 'name': r, 'type': Constants.label_t_song })
-                new_node.set_name(r['title'])
-                album.get_child_layer().add_node(new_node)
+                album.get_child_layer().append(self.create_song_node(r))
         except Exception as e:
             log.error("could not load songs by album '%s': %s" % (album.get_name(), e))
 
@@ -508,7 +297,7 @@ class MpdFrontApp(Gtk.Application):
                 return
             for r in recv:
                 if r:
-                    n.get_child_layer().add_node(data.ContentTreeNode({ 'name': r, 'type': Constants.label_t_genre }))
+                    n.get_child_layer().append(data.ContentTreeNode({ 'name': r, 'type': Constants.label_t_genre }))
         except Exception as e:
             log.error("could not load genres" % e)
 
@@ -517,7 +306,7 @@ class MpdFrontApp(Gtk.Application):
             recv = self.mpd_list("album", "genre", genre.get_name())
             #log.debug("albums by genre '%s': %s" % (genre.get_name(), recv))
             for r in recv:
-                genre.get_child_layer().add_node(data.ContentTreeNode({ 'name': r, 'type': Constants.label_t_album }))
+                genre.get_child_layer().append(data.ContentTreeNode({ 'name': r, 'type': Constants.label_t_album }))
         except Exception as e:
             log.error("could not load albums by genre '%s': %s" % (genre.get_name(), e))
 
@@ -526,9 +315,7 @@ class MpdFrontApp(Gtk.Application):
             recv = self.mpd_find("genre", genre.get_name(), "album", album.get_name())
             #log.debug("songs by album by genre '%s' '%s': %s" % (album.get_name(), genre.get_name(), recv))
             for r in recv:
-                new_node = data.ContentTreeNode({ 'name': r, 'type': Constants.label_t_song })
-                new_node.set_name(r['title'])
-                album.get_child_layer().add_node(new_node)
+                album.get_child_layer().append(self.create_song_node(r))
         except Exception as e:
             log.error("could not load songs by album by genre '%s', '%s': %s" % (genre.get_name(), album.get_name(), e))
 
@@ -550,9 +337,26 @@ class MpdFrontApp(Gtk.Application):
                 for f2 in subf:
                     metadata = {'type': f2['type'], 'name': f['value'] + "/" + f2['value'], 'data': f2['data'] }
                     #log.debug("adding metadata: %s" % metadata)
-                    n.get_child_layer().add_node(data.ContentTreeNode(metadata))
+                    n.get_child_layer().append(data.ContentTreeNode(metadata))
         except Exception as e:
             log.error("could not load files" % e)
+
+    def get_song_display_name(self, song:dict):
+        node_name = ""
+        if 'title' in song and 'track' in song:
+            node_name = "%s %s" % (song['track'], song['title'])
+        else:
+            node_name = os.path.basename(song['file'])
+        return node_name
+
+    def create_song_node(self, song:dict):
+        log.debug("song: %s" % song)
+        song['type'] = Constants.label_t_song
+        song['name'] = self.get_song_display_name(song) 
+        new_node = data.ContentTreeNode(song)
+        log.debug("new node: %s" % new_node.get_name())
+        return new_node
+
 
 class DataCache():
     cache = {
