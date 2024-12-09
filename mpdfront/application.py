@@ -21,18 +21,31 @@ class MpdFrontApp(Gtk.Application):
     def __init__(self, config:configparser, css_file:str=None, host:str=None, port:int=None, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.config = config
-        self.css_file = css_file
-        self.card_id = int(config.get("main", "sound_card"))
-        self.device_id = int(config.get("main", "sound_device"))
         self.idle_queue = queue.Queue()
+        if config.has_option("main", "sound_card"):
+            self.card_id = int(config.get("main", "sound_card"))
+        if config.has_option("main", "sound_device"):
+            self.device_id = int(config.get("main", "sound_device"))
+        if css_file:
+            self.css_file = css_file
+        elif config.has_option("main", "style"):
+            self.css_file = config.get("main", "style")
+        else:
+            self.css_file = None
         if host:
             self.host = host
-        else:
+        elif config.has_option("main", "host"):
             self.host = config.get("main", "host")
+        else:
+            self.host = Constants.default_host
         if port:
             self.port = port
-        else:
+        elif config.has_option("main", "port"):
             self.port = int(config.get("main", "port"))
+        else:
+            self.port = Constants.default_port
+        if config.has_option("main", "music_dir"):
+            self.music_dir = config.get("main", "music_dir")
 
         ## Connect to MPD
         try:
@@ -138,7 +151,7 @@ class MpdFrontApp(Gtk.Application):
         """
         mpd_status = self.mpd_client.status()
         currentsong = self.mpd_client.currentsong()
-        self.window.playback_display.update(mpd_status, currentsong, self.config.get("main", "music_dir"))
+        self.window.playback_display.update(mpd_status, currentsong, self.music_dir)
         return True
 
     def refresh_playlist(self):
@@ -182,8 +195,7 @@ class MpdFrontApp(Gtk.Application):
                 if msg.get_item() == Constants.message_item_playlist:
                     self.window.playlist_list.update(msg.get_data()['playlist'], msg.get_data()['current'])
                 if msg.get_item() == Constants.message_item_player:
-                    self.window.playback_display.update(msg.get_data()['status'], msg.get_data()['current'],
-                                                        self.config.get("main", "music_dir"))
+                    self.window.playback_display.update(msg.get_data()['status'], msg.get_data()['current'], self.music_dir)
         return True
 
     ## Content tree data loaders

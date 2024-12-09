@@ -990,7 +990,7 @@ class MpdFrontWindow(Gtk.Window):
         self.connect("destroy", self.close)
         self.connect("state_flags_changed", self.on_state_flags_changed)
 
-        if re.match(r'yes$', self.config.get("main", "fullscreen"), re.IGNORECASE):
+        if config.has_option("main", "fullscreen") and re.match(r'yes$', config.get("main", "fullscreen"), re.IGNORECASE):
             self.fullscreen()
 
         self.playlist_last_selected = 0

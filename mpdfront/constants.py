@@ -1,6 +1,8 @@
 import os
 
 class Constants:
+    default_host = "localhost"
+    default_port = 6600
     application_id = "com.github.randohm.mpdfront"
     log_format = "%(asctime)s %(levelname)s %(threadName)s %(module)s::%(funcName)s(%(lineno)d): %(message)s"
     config_file = os.environ['HOME'] + "/.config/mpdfront/mpdfront.cfg"
