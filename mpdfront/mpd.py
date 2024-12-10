@@ -1,6 +1,5 @@
-import queue
-import time
-import threading
+import time, inspect
+import threading, queue
 import logging
 import musicpd
 from . import Constants
@@ -54,17 +53,19 @@ class Client:
         }
 
     def __getattr__(self, attr):
-        #log.debug("called __getattr__: %s" % attr)
+        log = logging.getLogger(__name__+"."+self.__class__.__name__+"."+inspect.stack()[0].function)
+        log.debug("called __getattr__: %s" % attr)
         if attr not in self._mpd_callbacks:
             raise AttributeError("object has no attribute %s" % attr)
-        return lambda *args: self._mpd_callbacks[attr](*args)
+        return lambda *args: self.run_command(self._mpd_callbacks[attr], *args)
 
     def reconnect(self):
+        log = logging.getLogger(__name__+"."+self.__class__.__name__+"."+inspect.stack()[0].function)
         try:
             log.debug("attempting disconnect")
             self.mpd_client.disconnect()
         except Exception as e:
-            log.debug("diconnect failed: %s" % e)
+            log.debug("disconnect failed: %s" % e)
         try:
             log.debug("attempting reconnect")
             self.mpd_client.connect()
@@ -83,6 +84,7 @@ class Client:
         :param kwargs: args for callback
         :return:
         """
+        log = logging.getLogger(__name__+"."+self.__class__.__name__+"."+inspect.stack()[0].function)
         try_reconnect = False
         retries = 0
         while True:
@@ -99,7 +101,9 @@ class Client:
                     retries += 1
                     continue
             try:
+                log.debug("callback: %s" % callback.__name__)
                 ret = callback(*args, **kwargs)
+                log.debug("callback returned type: %s" % type(ret))
                 return ret
             except (musicpd.ConnectionError, BrokenPipeError, ConnectionResetError, ConnectionError,
                     ConnectionAbortedError, ConnectionRefusedError) as e:

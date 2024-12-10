@@ -138,8 +138,9 @@ class MpdFrontApp(Gtk.Application):
             self.load_content_data(new_node)
 
         ## Set timers
-        self.thread_comms_timeout_id = GLib.timeout_add(Constants.idle_thread_interval, self.idle_thread_comms_handler)
-        self.thread_comms_timeout_id = GLib.timeout_add(Constants.playback_update_interval_play, self.refresh_playback)
+        self.idle_thread_timeout_id = GLib.timeout_add(Constants.idle_thread_interval, self.idle_thread_comms_handler)
+        self.refresh_thread_timeout_id = GLib.timeout_add(Constants.playback_refresh_interval, self.refresh_playback)
+        self.alive_thread_timeout_id = GLib.timeout_add(Constants.alive_check_interval, self.check_threads)
 
         self.connect('activate', self.on_activate)
         self.connect('shutdown', self.on_quit)
@@ -405,7 +406,7 @@ class MpdFrontApp(Gtk.Application):
                 log.error("no data feteched for genre" )
                 return
             for r in recv:
-                if r:
+                if r != None:
                     new_node= data.ContentTreeNode(metadata={'name': r, 'type': Constants.label_t_genre,
                                                 'previous': node, 'next_type': Constants.label_t_album})
                     node.get_child_layer().append(new_node)
@@ -447,7 +448,7 @@ class MpdFrontApp(Gtk.Application):
             files = self.get_files_list(path)
             log.debug("files: %s" % files)
             if not files or not isinstance(files, list):
-                #log.error("could not get files successfully: %s" % files)
+                log.error("could not get files successfully: %s" % files)
                 return
             for f in files:
                 #log.debug("adding file: %s" % f)
@@ -477,7 +478,8 @@ class MpdFrontApp(Gtk.Application):
     ## END content tree data loaders
 
     def create_song_node(self, song:dict):
-        #log.debug("create song node: %s" % song)
+        log = logging.getLogger(__name__+"."+self.__class__.__name__+"."+inspect.stack()[0].function)
+        log.debug("create song node: %s" % song)
         song['type'] = Constants.label_t_song
         if 'title' in song and 'track' in song:
             song['name'] = "%s %s" % (song['track'], song['title'])
@@ -486,3 +488,16 @@ class MpdFrontApp(Gtk.Application):
         new_node = data.ContentTreeNode(metadata=song)
         log.debug("new node: %s" % new_node.get_metaname())
         return new_node
+
+    def check_threads(self):
+        log = logging.getLogger(__name__+"."+self.__class__.__name__+"."+inspect.stack()[0].function)
+        if not self.mpd_idle_thread.thread.is_alive():
+            log.error("idle thread has stopped, restarting")
+            try:
+                self.mpd_idle_thread = mpd.IdleClientThread(host=self.host, port=self.port, queue=self.idle_queue,
+                                                            name="idleThread")
+            except Exception as e:
+                log.error("could not restart idle thread: %s" % e)
+        else:
+            log.debug("idle thread is alive")
+        return True
