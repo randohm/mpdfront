@@ -3,8 +3,7 @@ import time
 import threading
 import logging
 import musicpd
-
-from . import Constants, data
+from . import Constants
 from .message import QueueMessage
 
 log = logging.getLogger(__name__)
@@ -100,12 +99,14 @@ class Client:
                     retries += 1
                     continue
             try:
-                return callback(*args, **kwargs)
+                ret = callback(*args, **kwargs)
+                return ret
             except (musicpd.ConnectionError, BrokenPipeError, ConnectionResetError, ConnectionError,
                     ConnectionAbortedError, ConnectionRefusedError) as e:
                 log.error("command failed, type: %s message: %s" % (type(e).__name__, e))
                 try_reconnect = True
                 time.sleep(Constants.reconnect_retry_sleep_secs)
+                retries += 1
                 continue
             except musicpd.PendingCommandError as e:
                 log.error("PendingCommandError: %s" % e)
@@ -113,10 +114,10 @@ class Client:
             except Exception as e:
                 log.error("unhandled exception, type: %s message: %s" % (type(e).__name__, e))
                 return None
-            else:
-                log.debug("else pass")
-            finally:
-                retries += 1
+            #else:
+            #    log.debug("else pass")
+            #finally:
+            #    retries += 1
 
     def play_or_pause(self):
         """

@@ -1,5 +1,5 @@
 import configparser
-import re, os, html, io
+import re, os, html, io, inspect
 import logging
 from PIL import Image
 import mutagen
@@ -24,28 +24,16 @@ def listbox_cmp(row1, row2, data, notify_destroy):
     """
     return row1.get_child().get_text() > row2.get_child().get_text()
 
-def listbox_cmp_filtered(row1, row2, data, notify_destroy):
-    """
-    Compare function for Gtk.ListBox sorting. Modifies the text before comparison.
-    Removes from text: /^The /
-    Args:
-        Standard args for Gtk.ListBox sort compare function.
-    """
-    row1_value = re.sub(r'^The ', '', row1.get_child().get_text(), flags=re.IGNORECASE)
-    row2_value = re.sub(r'^The ', '', row2.get_child().get_text(), flags=re.IGNORECASE)
-
-    return row1_value > row2_value
-
 def listbox_cmp_by_track(row1, row2, data, notify_destroy):
     """
     Compare function for Gtk.ListBox sorting. Modifies the text before comparison.
     Args:
         Standard args for Gtk.ListBox sort compare function.
     """
-    if not ('track' in row1.get_child().data['track'] and 'track' in row2.get_child().data['track']):
+    if not ('track' in row1.get_child().metadata['track'] and 'track' in row2.get_child().metadata['track']):
         return 0
-    row1_value = int(row1.get_child().data['track'])
-    row2_value = int(row2.get_child().data['track'])
+    row1_value = int(row1.get_child().metadata['track'])
+    row2_value = int(row2.get_child().metadata['track'])
 
     return row1_value > row2_value
 
@@ -247,27 +235,17 @@ class PlaylistEditDialog(Gtk.Dialog):
             self.get_content_area().append(Gtk.Label(label="Edit: " + song['file']))
         self.get_content_area().set_size_request(300, 100)
 
-class MetadataLabel(Gtk.Label):
-    """
-    Gtk.Label with 2 accessible variables: data and type.
-    """
+class ContentTreeLabel(Gtk.Label):
+    def __init__(self, node:data.ContentTreeNode=None, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if node:
+            self._node = node
 
-    def set_metadata(self, data):
-        """
-        Set the metadata for the label
-        :param data: can be anything
-        """
-        self.data = data
+    def set_node(self, node:data.ContentTreeNode):
+        self._node = node
 
-    def set_metatype(self, t:str):
-        """
-        Set the metatype for the label
-        :param t: can be anything
-        """
-        self.type = t
-
-    def set_content_node(self, node:data.ContentTreeNode):
-        self.node = node
+    def get_node(self):
+        return self._node
 
 class IndexedListBox(Gtk.ListBox):
     """
@@ -288,11 +266,11 @@ class ColumnBrowser(Gtk.Box):
     Column browser for a tree data structure. Inherits from GtkBox.
     Creates columns with a list of GtkScrolledWindows containing a GtkListBox.
     """
-    def __init__(self, parent:Gtk.Window, app:Gtk.Application, content_tree:data.ContentTree, cols=2, spacing=0, hexpand=True, vexpand=True, *args, **kwargs):
+    def __init__(self, parent:Gtk.Window, app:Gtk.Application, content_tree:Gio.ListStore, cols=2, spacing=0, hexpand=True, vexpand=True, *args, **kwargs):
         """
         Constructor for the column browser.
-        :param selected_callback: callback function for handling row-selected events
-        :param keypress_callback: callback function for handling key-press-event events
+        :param parent: parent object
+        :param app: main application object
         :param cols: int for number of colums
         :param hexpand: boolean for whether to set horizontal expansion
         :param vexpand: boolean for whether to set vertical expansion
@@ -304,7 +282,9 @@ class ColumnBrowser(Gtk.Box):
         self.parent = parent
         self.app = app
         self.content_tree = content_tree
+        self.previous_selected = None
         self.set_spacing(spacing)
+        self.num_columns = cols
         self.columns = []
         ## Initialize the columns
         for i in range(0, cols):
@@ -314,12 +294,12 @@ class ColumnBrowser(Gtk.Box):
             listbox.set_vexpand(vexpand)
             listbox.set_index(i)
             listbox.connect("row-selected", self.on_row_selected)
-            listbox.connect("row-activated", self.on_row_activated)
+            #listbox.connect("row-activated", self.on_row_activated)
             scroll.set_child(listbox)
             self.append(scroll)
             self.columns.append(listbox)
         ## Initialize data in 1st column
-        self.columns[0].bind_model(model=content_tree.get_top_layer(), create_widget_func=self.create_list_label)
+        self.columns[0].bind_model(model=content_tree, create_widget_func=self.create_list_label)
 
         self.controller = Gtk.EventControllerKey.new()
         self.controller.connect('key-pressed', self.on_key_pressed)
@@ -337,78 +317,62 @@ class ColumnBrowser(Gtk.Box):
             row = c.get_selected_row()
             if row:
                 child = row.get_child()
-                ret.append({'type': child.type, 'value': child.get_text(), 'data': child.data})
+                ret.append(child.get_node())
         return ret
 
     def create_list_label(self, node):
-        #log.debug("creating label for: %s" % node.get_name())
-        label = MetadataLabel(label=node.get_name())
-        label.set_content_node(node)
-        label.set_metatype(node.metadata['type'])
-        label.set_metadata(node.metadata)
+        label = ContentTreeLabel(label=node.get_metaname(), node=node)
         label.set_halign(Gtk.Align.START)
         label.set_valign(Gtk.Align.START)
+        #log.debug("returning label for: %s" % label.get_label())
         return label
 
     def on_key_pressed(self, controller, keyval, keycode, state):
         """
         Keypress handler for toplevel widget. Responds to global keys for playback control.
         """
-        ctrl_pressed = state & Gdk.ModifierType.CONTROL_MASK
-        cmd_pressed = state & Gdk.ModifierType.META_MASK   ## Cmd
+        #ctrl_pressed = state & Gdk.ModifierType.CONTROL_MASK
+        #cmd_pressed = state & Gdk.ModifierType.META_MASK   ## Cmd
         #shift_pressed = state & Gdk.ModifierType.SHIFT_MASK
         #alt_pressed = state & Gdk.ModifierType.ALT_MASK
 
         try:
-            log.debug("Key pressed: %x" % keyval)
+            #log.debug("Key pressed: %x" % keyval)
+            if keyval == Gdk.KEY_Return:
+                self.parent.add_to_playlist()
         except Exception as e:
             log.error("error on keypress (%s): %s" % (type(e).__name__, e))
 
     def on_row_selected(self, listbox, row):
+        log = logging.getLogger(__name__+"."+self.__class__.__name__+"."+inspect.stack()[0].function)
+        log.debug("row selected args: %s, %s" % (listbox, row))
         if not row:
             log.debug("row is None")
             return
         label = row.get_child()
-        log.debug("row selected: %s %s" % (label.type, label.node.get_name()))
+        if not label:
+            log.error("label is None")
+            return
+        node = label.get_node()
+        if not node:
+            log.error("node is None")
+            return
+        log.debug("row selected: %s %s" % (node.get_metatype(), node.get_metadata()))
         ## clear out all columns to the right
-        for i in range(listbox.get_index()+1, len(self.columns)):
+        for i in range(listbox.get_index()+1, self.num_columns):
             self.columns[i].bind_model(model=None, create_widget_func=None)
         ## load and show the next column to the right based on the current column
-        if label.type == Constants.label_t_category:
-            self.columns[listbox.get_index()+1].bind_model(model=label.node.get_child_layer(), create_widget_func=self.create_list_label)
-        elif label.type == Constants.label_t_albumartist:
-            if not label.node.get_child_layer().get_n_items():
-                self.app.load_albums_by_albumartist(label.node)
-            self.columns[listbox.get_index()+1].bind_model(model=label.node.get_child_layer(), create_widget_func=self.create_list_label)
-        elif label.type == Constants.label_t_artist:
-            if not label.node.get_child_layer().get_n_items():
-                self.app.load_albums_by_artist(label.node)
-            self.columns[listbox.get_index() + 1].bind_model(model=label.node.get_child_layer(), create_widget_func=self.create_list_label)
-        elif label.type == Constants.label_t_genre:
-            if not label.node.get_child_layer().get_n_items():
-                self.app.load_albums_by_genre(label.node)
-            self.columns[listbox.get_index() + 1].bind_model(model=label.node.get_child_layer(), create_widget_func=self.create_list_label)
-        elif label.type == Constants.label_t_album:
-            if not label.node.get_child_layer().get_n_items():
-                prev_label = self.columns[listbox.get_index()-1].get_selected_row().get_child()
-                if prev_label.type == Constants.label_t_albumartist:
-                    self.app.load_songs_by_album_by_albumartist(label.node, prev_label.node)
-                elif prev_label.type == Constants.label_t_artist:
-                    self.app.load_songs_by_album_by_artist(label.node, prev_label.node)
-                elif prev_label.type == Constants.label_t_genre:
-                    self.app.load_songs_by_album_by_genre(label.node, prev_label.node)
-                elif prev_label.type == Constants.label_t_category:
-                    self.app.load_songs_by_album(label.node)
-            self.columns[listbox.get_index()+1].bind_model(model=label.node.get_child_layer(), create_widget_func=self.create_list_label)
+        self.app.load_content_data(node=node)
+        if node.get_metatype() not in (Constants.label_t_song, Constants.label_t_file) and listbox.get_index() < self.num_columns-1:
+            self.columns[listbox.get_index()+1].bind_model(model=node.get_child_layer(), create_widget_func=self.create_list_label)
 
     def on_row_activated(self, listbox, listboxrow):
         try:
-            node = listboxrow.get_child().node
-            log.debug("node: %s" % (node))
-            if node.metadata['type'] in ('song', 'album'):
+            label = listboxrow.get_child()
+            if label.get_metatype() in ('song', 'album'):
                 self.parent.add_to_playlist()
         except Exception as e:
-            log.error("error on keypress (%s): %s" % (type(e).__name__, e))
+            log.error("error on row_activated (%s): %s" % (type(e).__name__, e))
 
 class PlaybackDisplay(Gtk.Box):
     def __init__(self, parent:Gtk.Window, app:Gtk.Application, sound_card:int=None, sound_device:int=None, *args, **kwargs):
@@ -821,13 +785,14 @@ class PlaylistDisplay(Gtk.ListBox):
         self.add_controller(controller)
 
     def update(self, playlist:dict, mpd_currentsong:dict):
+        self.liststore.remove_all()
         if playlist:
-            self.liststore.remove_all()
-            log.debug("playlist: %s" % playlist)
+
+            #log.debug("playlist: %s" % playlist)
             ## Add songs to the list
             for song in playlist:
-                log.debug("adding song to playlist: %s" % song['title'])
-                self.liststore.append(PlaylistTrack(song))
+                #log.debug("adding song to playlist: %s" % song['title'])
+                self.liststore.append(data.ContentTreeNode(metadata=song))
             if self.last_selected != None:
                 self.select_row(self.get_row_at_index(self.last_selected))
             if self.parent.focus_on == "playlist" and self.get_row_at_index(self.last_selected):
@@ -836,17 +801,16 @@ class PlaylistDisplay(Gtk.ListBox):
                 self.get_row_at_index(int(mpd_currentsong['pos'])).set_name("current-track")
             log.debug("playlist refresh complete")
 
-    def create_list_label(self, track):
-        if track.track and track.time and track.title:
-            label_text = re.sub(r'/.*', '', html.escape(track.track)) + " (" + html.escape(
-                pp_time(track.time)) + ") <b>" + html.escape(track.title) + "</b>"
+    def create_list_label(self, node):
+        if node.get_metadata('track') and node.get_metadata('time') and node.get_metadata('title'):
+            label_text = re.sub(r'/.*', '', html.escape(node.get_metadata('track'))) + " (" + html.escape(
+                pp_time(node.get_metadata('time'))) + ") <b>" + html.escape(node.get_metadata('title')) + "</b>"
         else:
-            label_text = os.path.basename(track.song['file'])
-        label = MetadataLabel()
+            label_text = os.path.basename(node.get_metadata('file'))
+        label = ContentTreeLabel(node=node)
         label.set_markup(label_text)
-        label.set_metatype('song')
-        label.set_metadata(track.song)
         label.set_halign(Gtk.Align.START)
+        label.set_valign(Gtk.Align.START)
         return label
 
     def on_key_pressed(self, controller, keyval, keycode, state):
@@ -861,7 +825,7 @@ class PlaylistDisplay(Gtk.ListBox):
             self.track_moveup()
         elif keyval == ord(self.parent.config.get("keys", "movedown")):
             self.track_movedown()
-        elif keyval == ord(self.parent.config.get("keys", "delete")):
+        elif keyval == ord(self.parent.config.get("keys", "delete")) or keyval in (Gdk.KEY_Delete, Gdk.KEY_BackSpace):
             self.track_delete()
 
     def edit_popup(self):
@@ -869,7 +833,7 @@ class PlaylistDisplay(Gtk.ListBox):
         Displays dialog with playlist edit options. Performs task based on user input.
         Play, move song up in playlist, down in playlist, delete from playlist.
         """
-        song = self.get_selected_row().get_child().data
+        song = self.get_selected_row().get_child().get_node().get_metadata()
         self.edit_playlist_dialog = PlaylistEditDialog(parent=self.parent, song=song)
         self.edit_playlist_dialog.connect('response', self.edit_response)
         self.edit_playlist_dialog.show()
@@ -883,7 +847,7 @@ class PlaylistDisplay(Gtk.ListBox):
             dialog.destroy()
             self.track_delete()
         elif response == 4:
-            song = self.get_selected_row().get_child().data
+            song = self.get_selected_row().get_child().get_node().get_metadata()
             self.parent.mpd_playid(song['id'])
             dialog.destroy()
         elif response == 0:
@@ -893,7 +857,7 @@ class PlaylistDisplay(Gtk.ListBox):
         """
         Call SongInfoDialog to display the song data from the selected playlist row
         """
-        song = self.get_selected_row().get_child().data
+        song = self.get_selected_row().get_child().get_node().get_metadata()
         if song is None:
             return
         log.debug("song info: %s" % song)
@@ -901,7 +865,7 @@ class PlaylistDisplay(Gtk.ListBox):
 
     def track_moveup(self):
         index = self.get_selected_row().get_index()
-        song = self.get_selected_row().get_child().data
+        song = self.get_selected_row().get_child().get_node().get_metadata()
         log.debug("moving song up 1: '%s'" % song['title'])
         if index > 0:
             index -= 1
@@ -911,7 +875,7 @@ class PlaylistDisplay(Gtk.ListBox):
 
     def track_movedown(self):
         index = self.get_selected_row().get_index()
-        song = self.get_selected_row().get_child().data
+        song = self.get_selected_row().get_child().get_node().get_metadata()
         log.debug("moving song down 1: '%s'" % song['title'])
         if index + 1 < len(self.liststore):
             self.app.mpd_moveid(song['id'], index+1)
@@ -920,8 +884,8 @@ class PlaylistDisplay(Gtk.ListBox):
 
     def track_delete(self):
         index = self.get_selected_row().get_index()
-        song = self.get_selected_row().get_child().data
-        log.debug("deleting song: '%s'" % song['title'])
+        song = self.get_selected_row().get_child().get_node().get_metadata()
+        log.debug("deleting song: '%s'" % song)
         index -= 1
         if index < 0:
             index = 0
@@ -946,7 +910,7 @@ class MpdFrontWindow(Gtk.Window):
     focus_on = "broswer"        ## Either 'playlist' or 'browser'
     initial_resized = False
 
-    def __init__(self, config:configparser, application:Gtk.ApplicationWindow, content_tree:data.ContentTree, *args, **kwargs):
+    def __init__(self, config:configparser, application:Gtk.ApplicationWindow, content_tree:Gio.ListStore, *args, **kwargs):
         super().__init__(application=application, *args, **kwargs)
         self.config = config
         self.app = application
@@ -1013,7 +977,7 @@ class MpdFrontWindow(Gtk.Window):
         reconnect = False
         try:
             log.debug("Key pressed: %x" % keyval)
-            if (ctrl_pressed or cmd_pressed) and keyval in (ord('q'), ord('Q')):
+            if (ctrl_pressed or cmd_pressed) and keyval in (Gdk.KEY_Q, Gdk.KEY_q):
                 log.debug("QUIT pressed")
                 self.close()
             elif keyval == Constants.keyval_play or keyval == ord(self.config.get("keys", "playpause")):
@@ -1099,11 +1063,10 @@ class MpdFrontWindow(Gtk.Window):
                 else:
                     self.bottompaned.set_position(0)
 
-            elif keyval == ord('b'):
-                data.Dumper.dump(self.content_tree.get_top_layer())
-
-            #elif keyval == ord('v'):
-            #    self.set_dividers()
+            elif keyval == Gdk.KEY_b:
+                data.dump(self.content_tree)
+            elif keyval == Gdk.KEY_v:
+                self.set_dividers()
             #elif keyval == Gdk.KEY_Right:
             #    log.debug("RIGHT")
             #elif keyval == Gdk.KEY_Left:
@@ -1122,15 +1085,17 @@ class MpdFrontWindow(Gtk.Window):
         Displays confirmation dialog, presenting options to add, replace or cancel.
         """
         self.browser_selected_items = self.browser_box.get_selected_rows()
-        #log.debug("selected items: %s" % selected_items)
-        if not self.browser_selected_items[-1]['type'] in ("album", "song", "file"):
+        log.debug("selected items: %s" % self.browser_selected_items)
+        if not self.browser_selected_items[-1].get_metatype() in (Constants.label_t_song, Constants.label_t_album, Constants.label_t_file):
             return
         add_item_name = ""
         for i in range(1, len(self.browser_selected_items)):
-            if self.browser_selected_items[i]['type'] == "song":
-                add_item_name += self.browser_selected_items[i]['data']['title'] + " "
+            log.debug("confirming add item: %s" % self.browser_selected_items[i].get_metaname())
+            if self.browser_selected_items[i].get_metatype() == Constants.label_t_song:
+                add_item_name += self.browser_selected_items[i].get_metadata('title') + " "
             else:
-                add_item_name += self.browser_selected_items[i]['value'] + " "
+                add_item_name += self.browser_selected_items[i].get_metaname() + " "
+        log.debug("confirming add item: %s" % add_item_name)
         self.playlist_confirm_dialog = PlaylistConfirmDialog(parent=self, add_item_name=add_item_name)
         self.playlist_confirm_dialog.connect('response', self.playlist_confirm_dialog_response)
         self.playlist_confirm_dialog.show()
@@ -1182,35 +1147,36 @@ class MpdFrontWindow(Gtk.Window):
         elif change == "device_id":
             self.device_id = button.get_value_as_int()
 
-    ## New methods
     def playlist_confirm_dialog_response(self, dialog, response):
+        log = logging.getLogger(__name__ + "." + self.__class__.__name__ + "." + inspect.stack()[0].function)
         log.debug("dialog response: %s" % response)
         dialog.destroy()
         if response == 2:
             ## Clear list before adding for "replace"
             self.app.mpd_clear()
         if response in (1, 2): ## Add or replace
-            if self.browser_selected_items[-1]['type'] in ("song", "file"):
-                log.debug("adding song: %s" % self.browser_selected_items[-1]['data']['title'])
-                self.app.mpd_add(self.browser_selected_items[-1]['data']['file'])
-            elif self.browser_selected_items[-1]['type'] == "album":
-                log.debug("adding album: %s" % self.browser_selected_items[-1]['value'])
-                if self.browser_selected_items[-2]['type'] == "artist":
-                    log.debug("adding album by artist: %s" % self.browser_selected_items[-2]['value'])
-                    self.app.mpd_findadd("artist", self.browser_selected_items[-2]['value'], "album",
-                                         self.browser_selected_items[-1]['value'])
-                elif self.browser_selected_items[-2]['type'] == "albumartist":
-                    log.debug("adding album by albumartist: %s" % self.browser_selected_items[-2]['value'])
-                    self.app.mpd_findadd("albumartist", self.browser_selected_items[-2]['value'], "album",
-                                         self.browser_selected_items[-1]['value'])
-                elif self.browser_selected_items[-2]['type'] == "genre":
-                    log.debug("adding album by genre: %s" % self.browser_selected_items[-2]['value'])
-                    self.app.mpd_findadd("genre", self.browser_selected_items[-2]['value'], "album",
-                                         self.browser_selected_items[-1]['value'])
+            if self.browser_selected_items[-1].get_metatype() in (Constants.label_t_song, Constants.label_t_file):
+                log.debug("adding song: %s" % self.browser_selected_items[-1].get_metadata())
+                self.app.mpd_add(self.browser_selected_items[-1].get_metadata('data')['file'])
+            elif self.browser_selected_items[-1].get_metatype() == Constants.label_t_album:
+                log.debug("adding album: %s" % self.browser_selected_items[-1].get_metaname())
+                if self.browser_selected_items[-2].get_metatype() == Constants.label_t_artist:
+                    log.debug("adding album by artist: %s" % self.browser_selected_items[-2].get_metaname())
+                    self.app.mpd_findadd("artist", self.browser_selected_items[-2].get_metatype(), "album",
+                                         self.browser_selected_items[-1].get_metaname())
+                elif self.browser_selected_items[-2].get_metatype() == Constants.label_t_albumartist:
+                    log.debug("adding album by albumartist: %s" % self.browser_selected_items[-2].get_metaname())
+                    self.app.mpd_findadd("albumartist", self.browser_selected_items[-2].get_metaname(), "album",
+                                         self.browser_selected_items[-1].get_metaname())
+                elif self.browser_selected_items[-2].get_metatype() == Constants.label_t_genre:
+                    log.debug("adding album by genre: %s" % self.browser_selected_items[-2].get_metaname())
+                    self.app.mpd_findadd("genre", self.browser_selected_items[-2].get_metaname(), "album",
+                                         self.browser_selected_items[-1].get_metaname())
                 else:
-                    log.error("unhandled type 2: %s" % self.browser_selected_items[-2]['type'])
+                    log.error("unhandled type 2: %s" % self.browser_selected_items[-2].get_metatype())
             else:
-                log.error("unhandled type 1: %s" % self.browser_selected_items[-1]['type'])
+                log.error("unhandled type 1: %s" % self.browser_selected_items[-1].get_metatype())
+        self.browser_selected_items = None
 
     def on_mainpaned_show(self, widget, user_data):
         log.debug("showed mainpaned, height: %d, %s" % (self.get_height(), user_data))

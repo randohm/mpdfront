@@ -28,7 +28,6 @@ class Constants:
     keyval_cue = 0x1008ff97
     keyval_previous = 0x1008ff16
     keyval_next = 0x1008ff17
-    #keyval_delete = 0x
 
     ## names of data nodes
     topnode_name_albumartists = "Album Artists"
@@ -37,13 +36,23 @@ class Constants:
     topnode_name_genres = "Genres"
     topnode_name_files = "Files"
 
+    ## label metatypes
+    label_t_category = "category"
+    label_t_albumartist = "albumartist"
+    label_t_artist = "artist"
+    label_t_album = "album"
+    label_t_genre = "genre"
+    label_t_dir = "directory"
+    label_t_file = "file"
+    label_t_song = "song"
+
     ## Rows for 1st column of browser
     browser_1st_column_rows = [
-        {'type': 'category', 'name': topnode_name_albumartists},
-        {'type': 'category', 'name': topnode_name_artists},
-        {'type': 'category', 'name': topnode_name_albums},
-        {'type': 'category', 'name': topnode_name_genres},
-        {'type': 'category', 'name': topnode_name_files},
+        {'type': 'category', 'name': topnode_name_albumartists, 'next_type': label_t_albumartist},
+        {'type': 'category', 'name': topnode_name_artists, 'next_type': label_t_artist},
+        {'type': 'category', 'name': topnode_name_albums, 'next_type': label_t_album},
+        {'type': 'category', 'name': topnode_name_genres, 'next_type': label_t_genre},
+        {'type': 'category', 'name': topnode_name_files, 'next_type': label_t_dir},
     ]
 
     proc_file_fmt = "/proc/asound/card%s/pcm%sp/sub%s/hw_params"  ## proc file with DAC information
@@ -55,16 +64,8 @@ class Constants:
     message_item_player = "player"
 
     ## sleep/wait intervals
-    check_thread_comms_interval = 1000      ## milliseconds
+    idle_thread_interval = 334              ## milliseconds
     playback_update_interval_play = 1000    ## milliseconds
     reconnect_retry_sleep_secs = 1          ## seconds
     thread_alive_check_interval = 1000      ## milliseconds
 
-    ## label metatypes
-    label_t_category = "category"
-    label_t_albumartist = "albumartist"
-    label_t_artist = "artist"
-    label_t_album = "album"
-    label_t_genre = "genre"
-    label_t_file = "file"
-    label_t_song = "song"
