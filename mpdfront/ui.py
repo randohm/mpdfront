@@ -85,7 +85,8 @@ class SongInfoDialog(Gtk.AlertDialog):
 
 class CardSelectDialog(Gtk.Dialog):
     """
-    Display dialog to select sound card and device IDs.
+    Display dialog to select sound card and device IDs. This is for displaying DAC stats.
+    It is not associated to the outputs configured in MPD.
     Button click events are handled by a callback function passed to __init__.
     """
 
@@ -136,7 +137,7 @@ class CardSelectDialog(Gtk.Dialog):
 
 class OutputsDialog(Gtk.Dialog):
     """
-    Display dialog with list of outputs as individual CheckButtons.
+    Display dialog with list of outputs as individual CheckButtons. These are outputs defined in MPD.
     Button click events are handled by a callback function passed to __init__.
     """
 
@@ -548,13 +549,13 @@ class PlaybackDisplay(Gtk.Box):
 
         ## Get stream rates, format
         freq = bits = bitrate = chs = ""
-        if 'audio' in mpd_status.keys():
+        if 'audio' in mpd_status:
             if re.match(r'dsd\d+:', mpd_status['audio']):
                 bits = "dsd"
                 freq, chs = re.split(r':', mpd_status['audio'], maxsplit=1)
             else:
                 freq, bits, chs = re.split(r':', mpd_status['audio'], maxsplit=2)
-        if 'bitrate' in mpd_status.keys():
+        if 'bitrate' in mpd_status:
             bitrate = mpd_status['bitrate']
 
         ## Format and set stream/dac information. Set to empty if there is no info to display
@@ -611,7 +612,7 @@ class PlaybackDisplay(Gtk.Box):
             self.stats2_label.set_text(" ")
 
         ## Format and set time information and state
-        if 'time' in mpd_status.keys():
+        if 'time' in mpd_status:
             print_state = "Playing"
             if mpd_status['state'] == "pause":
                 print_state = "Paused"
@@ -651,7 +652,7 @@ class PlaybackDisplay(Gtk.Box):
                             img_data = a.tags['covr'][0]
                 else:
                     a = mutagen.File(audiofile)
-                    for k in a.keys():
+                    for k in a:
                         if re.match(r'APIC:', k):
                             img_data = a[k].data
                             break
@@ -684,7 +685,7 @@ class PlaybackDisplay(Gtk.Box):
         Load and display image of current song if it has changed since the last time this function was run, or on the first run.
         Loads image data into a PIL.Image object, then into a GdkPixbuf object, then into a Gtk.Image object for display.
         """
-        if not mpd_currentsong or not 'file' in mpd_currentsong.keys():
+        if not mpd_currentsong or not 'file' in mpd_currentsong:
             return
 
         audiofile = music_dir + "/" + mpd_currentsong['file']
@@ -787,7 +788,6 @@ class PlaylistDisplay(Gtk.ListBox):
     def update(self, playlist:dict, mpd_currentsong:dict):
         self.liststore.remove_all()
         if playlist:
-
             #log.debug("playlist: %s" % playlist)
             ## Add songs to the list
             for song in playlist:
@@ -893,17 +893,11 @@ class PlaylistDisplay(Gtk.ListBox):
         self.last_selected = index
         self.focus_on = "playlist"
 
-class PlaylistTrack(GObject.GObject):
-    def __init__(self, song: dict, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.song = song
-        for k in song.keys():
-            setattr(self, k, song[k])
-
 class MpdFrontWindow(Gtk.Window):
     last_audiofile = ""         ## Tracks albumart for display
     browser_full = False        ## Tracks if the browser is fullscreen
     browser_hidden = False      ## Tracks if the browser is hidden
+    bottom_full = False         ## Tracks if the bottom half of mainpained is fullscreen
     last_width = 0              ## Tracks width of window when window changes size
     last_height = 0             ## Tracks height of window when window changes size
     playlist_last_selected = 0  ## Points to last selected song in playlist
@@ -911,6 +905,7 @@ class MpdFrontWindow(Gtk.Window):
     initial_resized = False
 
     def __init__(self, config:configparser, application:Gtk.ApplicationWindow, content_tree:Gio.ListStore, *args, **kwargs):
+        log = logging.getLogger(__name__+"."+self.__class__.__name__+"."+inspect.stack()[0].function)
         super().__init__(application=application, *args, **kwargs)
         self.config = config
         self.app = application
@@ -961,124 +956,174 @@ class MpdFrontWindow(Gtk.Window):
         self.playlist_list.select_row(self.playlist_list.get_row_at_index(self.playlist_last_selected))
         self.browser_box.columns[0].select_row(self.browser_box.columns[0].get_row_at_index(0))
 
-        ## Setup callbacks
-        self.key_callbacks = {}
+        ## Setup callbacks for keypress events
+        ## values of dicts are tuples with: function, args (optional)
+        self.key_pressed_callbacks = {
+            Gdk.KEY_VoidSymbol:         (lambda: True,),
+            Gdk.KEY_Up:                 (log.debug, ("UP",)), #(lambda: True,),
+            Gdk.KEY_Down:               (log.debug, ("DOWN",)), #(lambda: True,),
+            Gdk.KEY_Right:              (log.debug, ("RIGHT",)), #(lambda: True,),
+            Gdk.KEY_Left:               (log.debug, ("LEFT",)), #(lambda: True,),
+            Gdk.KEY_Return:             (log.debug, ("RETURN",)), #(lambda: True,),
+            Gdk.KEY_Escape:             (log.debug, ("ESC",)), #(lambda: True,),
+            Gdk.KEY_AudioPlay:          (self.app.mpd_toggle,),
+            Gdk.KEY_AudioStop:          (self.app.mpd_stop,),
+            Gdk.KEY_AudioPrev:          (self.app.mpd_previous,),
+            Gdk.KEY_AudioNext:          (self.app.mpd_next,),
+            Gdk.KEY_v:                  (self.set_dividers,),
+            Gdk.KEY_q:                  (log.debug, ("pressed q",)),
+            Gdk.KEY_b:                  (data.dump, (self.content_tree,)),
+        }
+        ## callbacks for meta mod key
+        self.key_pressed_callbacks_mod_meta = {
+            Gdk.KEY_q:                  (self.close,),
+        }
+        ## callbacks for ctrl mod key
+        self.key_pressed_callbacks_mod_ctrl = {
+            Gdk.KEY_q:                  (self.close,),
+        }
+        ## keys defined in config file
+        self.key_pressed_callback_config_tuples = {
+            ("keys", "playpause"):      (self.app.mpd_toggle,),
+            ("keys", "stop"):           (self.app.mpd_stop,),
+            ("keys", "previous"):       (self.app.mpd_previous,),
+            ("keys", "next"):           (self.app.mpd_next,),
+            ("keys", "rewind"):         (self.app.mpd_seekcur, (Constants.rewind_arg,)),
+            ("keys", "cue"):            (self.app.mpd_seekcur, (Constants.cue_arg,)),
+            ("keys", "outputs"):        (self.event_outputs_dialog,),
+            ("keys", "options"):        (self.event_options_dialog,),
+            ("keys", "cardselect"):     (self.event_cardselect_dialog,),
+            ("keys", "browser"):        (self.event_focus_browser,),
+            ("keys", "playlist"):       (self.event_focus_playlist,),
+            ("keys", "full_browser"):   (self.event_full_browser,),
+            ("keys", "full_bottom"):    (self.event_full_bottom,),
+            ("keys", "full_playback"):  (self.event_full_playback,),
+            ("keys", "full_playlist"):  (self.event_full_playlist,),
+        }
+        ## add keys defined in config file
+        for k in self.key_pressed_callback_config_tuples:
+            log.debug("callback key:%s, value:%s" % (k, self.key_pressed_callback_config_tuples.get(k)))
+            if config.has_option(*k):
+                log.debug("option exists")
+                self.key_pressed_callbacks[ord(config.get(*k))] = self.key_pressed_callback_config_tuples[k]
+        log.debug("keypress callbacks: %s" % self.key_pressed_callbacks)
 
     def on_key_pressed(self, controller, keyval, keycode, state):
         """
         Keypress handler for toplevel widget. Responds to global keys for playback control.
         """
+        log = logging.getLogger(__name__+"."+self.__class__.__name__+"."+inspect.stack()[0].function)
         ctrl_pressed = state & Gdk.ModifierType.CONTROL_MASK
-        cmd_pressed = state & Gdk.ModifierType.META_MASK   ## Cmd
+        meta_pressed = state & Gdk.ModifierType.META_MASK   ## Cmd
         #shift_pressed = state & Gdk.ModifierType.SHIFT_MASK
         #alt_pressed = state & Gdk.ModifierType.ALT_MASK
 
-        error = False
-        reconnect = False
+        ## Attempt to run the pre-defined callback.
+        log.debug("Key pressed: 0x%x, 0x%x" % (keyval, keycode))
         try:
-            log.debug("Key pressed: %x" % keyval)
-            if (ctrl_pressed or cmd_pressed) and keyval in (Gdk.KEY_Q, Gdk.KEY_q):
-                log.debug("QUIT pressed")
-                self.close()
-            elif keyval == Constants.keyval_play or keyval == ord(self.config.get("keys", "playpause")):
-                log.debug("PLAY/PAUSE")
-                self.app.mpd_toggle()
-            elif keyval == ord(self.config.get("keys", "stop")):
-                log.debug("STOP")
-                self.app.mpd_stop()
-            elif keyval == Constants.keyval_previous or keyval == ord(self.config.get("keys", "previous")):
-                log.debug("PREVIOUS")
-                self.app.mpd_previous()
-            elif keyval == Constants.keyval_next or keyval == ord(self.config.get("keys", "next")):
-                log.debug("NEXT")
-                self.app.mpd_next()
-            elif keyval == Constants.keyval_rewind or keyval == ord(self.config.get("keys", "rewind")):
-                log.debug("REWIND")
-                self.app.mpd_seekcur(Constants.rewind_arg)
-            elif keyval == Constants.keyval_cue or keyval == ord(self.config.get("keys", "cue")):
-                log.debug("CUE")
-                self.app.mpd_seekcur(Constants.cue_arg)
-
-            elif keyval == ord(self.config.get("keys", "outputs")):
-                self.outputs_dialog = OutputsDialog(self, self.outputs_changed)
-
-            elif keyval == ord(self.config.get("keys", "options")):
-                mpd_status = self.app.mpd_status()
-                self.options_dialog = OptionsDialog(self, self.options_changed, mpd_status)
-
-            elif keyval == ord(self.config.get("keys", "cardselect")):
-                self.cards_dialog = CardSelectDialog(self, self.soundcard_changed)
-
-            elif keyval == ord(self.config.get("keys", "browser")):
-                ## Focus on the last selected row in the browser
-                self.focus_on = "broswer"
-                selected_items = self.browser_box.get_selected_rows()
-                if not len(selected_items):
-                    self.browser_box.columns[0].select_row(self.browser_box.columns[0].get_row_at_index(0))
-                    selected_items = self.browser_box.get_selected_rows()
-                focus_col = self.browser_box.columns[len(selected_items) - 1]
-                focus_row = focus_col.get_selected_row()
-                focus_row.grab_focus()
-
-            elif keyval == ord(self.config.get("keys", "playlist")):
-                ## Focus on the selected row in the playlist
-                self.focus_on = "playlist"
-                selected_row = self.playlist_list.get_selected_row()
-                if not selected_row:
-                    selected_row = self.playlist_list.get_row_at_index(0)
-                    self.playlist_list.select_row(selected_row)
-                selected_row.grab_focus()
-
-            elif keyval == ord(self.config.get("keys", "full_browser")):
-                ## Hide bottom pane/fullscreen browser
-                if self.mainpaned.get_position() == self.last_height - 1:
-                    self.mainpaned.set_position(int(self.last_height / 2))
-                else:
-                    self.mainpaned.set_position(self.last_height)
-
-            elif keyval == ord(self.config.get("keys", "full_bottom")):
-                ## Hide top pane
-                if self.mainpaned.get_position() == 0:
-                    self.mainpaned.set_position(int(self.last_height / 2))
-                else:
-                    self.mainpaned.set_position(0)
-
-            elif keyval == ord(self.config.get("keys", "full_playback")):
-                ## Hide playlist
-                if self.bottompaned.get_position() == self.last_width - 1:
-                    self.bottompaned.set_position(int(self.last_width / 2))
-                else:
-                    self.bottompaned.set_position(self.last_width)
-                self.resize_event_on = True
-                #self.set_current_albumart()
-                self.resize_event_on = False
-
-            elif keyval == ord(self.config.get("keys", "full_playlist")):
-                ## Hide top pane
-                if self.bottompaned.get_position() == 0:
-                    self.bottompaned.set_position(int(self.last_width / 2))
-                    self.resize_event_on = True
-                    #self.set_current_albumart()
-                    self.resize_event_on = False
-                else:
-                    self.bottompaned.set_position(0)
-
-            elif keyval == Gdk.KEY_b:
-                data.dump(self.content_tree)
-            elif keyval == Gdk.KEY_v:
-                self.set_dividers()
-            #elif keyval == Gdk.KEY_Right:
-            #    log.debug("RIGHT")
-            #elif keyval == Gdk.KEY_Left:
-            ##    log.debug("LEFT")
-            #elif keyval == Gdk.KEY_Up:
-            #    log.debug("UP")
-            #elif keyval == Gdk.KEY_Down:
-            #    log.debug("DOWN")
-            #else:
-            #    log.debug("key press: %s" % keyval)
+            tup = None
+            if meta_pressed:
+                log.debug("meta modifier pressed")
+                tup = self.key_pressed_callbacks_mod_meta.get(keyval)
+            elif ctrl_pressed:
+                log.debug("ctrl meta modifier pressed")
+                tup = self.key_pressed_callbacks_mod_meta.get(keyval)
+            else:
+                tup = self.key_pressed_callbacks.get(keyval)
+            if tup:
+                callback = tup[0]
+                cb_args = None
+                if len(tup) >= 2:
+                    cb_args = tup[1]
+                if callback:
+                    log.debug("calling : %s" % callback)
+                    log.debug("with args: %s" % (cb_args,))
+                    if cb_args and isinstance(cb_args, tuple) and len(cb_args):
+                        log.debug("calling with args")
+                        callback(*cb_args)
+                    else:
+                        log.debug("calling with no args")
+                        callback()
+            else:
+                log.debug("no action defined for keyval: 0x%x" % keyval)
+        except KeyError as e:
+            log.debug("KeyError on callback: %s" % (e))
         except Exception as e:
-            log.error("error on keypress (%s): %s" % (type(e).__name__, e))
+            log.error("could not call callback: %s %s" % (type(e), e))
+
+    def event_outputs_dialog(self):
+        self.outputs_dialog = OutputsDialog(self, self.outputs_changed)
+
+    def event_options_dialog(self):
+        mpd_status = self.app.mpd_status()
+        self.options_dialog = OptionsDialog(self, self.options_changed, mpd_status)
+
+    def event_cardselect_dialog(self):
+        self.cards_dialog = CardSelectDialog(self, self.soundcard_changed)
+
+    def event_focus_browser(self):
+        ## Focus on the last selected row in the browser
+        self.focus_on = "broswer"
+        selected_items = self.browser_box.get_selected_rows()
+        if not len(selected_items):
+            self.browser_box.columns[0].select_row(self.browser_box.columns[0].get_row_at_index(0))
+            selected_items = self.browser_box.get_selected_rows()
+        focus_col = self.browser_box.columns[len(selected_items) - 1]
+        focus_row = focus_col.get_selected_row()
+        focus_row.grab_focus()
+
+    def event_focus_playlist(self):
+        ## Focus on the selected row in the playlist
+        self.focus_on = "playlist"
+        selected_row = self.playlist_list.get_selected_row()
+        if not selected_row:
+            selected_row = self.playlist_list.get_row_at_index(0)
+            self.playlist_list.select_row(selected_row)
+        selected_row.grab_focus()
+
+    def event_full_browser(self):
+        log = logging.getLogger(__name__ + "." + self.__class__.__name__ + "." + inspect.stack()[0].function)
+        height = self.get_height()
+        position = self.mainpaned.get_position()
+        if position > (height-5):
+            log.debug("setting browser to split screen")
+            self.mainpaned.set_position(height/2)
+        else:
+            log.debug("setting browser to full screen")
+            self.mainpaned.set_position(height)
+
+    def event_full_bottom(self):
+        log = logging.getLogger(__name__ + "." + self.__class__.__name__ + "." + inspect.stack()[0].function)
+        height = self.get_height()
+        position = self.mainpaned.get_position()
+        log.debug("position: %d, height: %d" % (position, height))
+        if position < 5:
+            log.debug("setting bottom to split screen")
+            self.mainpaned.set_position(height/2)
+        else:
+            log.debug("setting bottom to full screen")
+            self.mainpaned.set_position(0)
+
+    def event_full_playback(self):
+        log = logging.getLogger(__name__ + "." + self.__class__.__name__ + "." + inspect.stack()[0].function)
+        width = self.get_width()
+        position = self.bottompaned.get_position()
+        log.debug("position: %d, width: %d" % (position, width))
+        ## old
+        if position > (width-5):
+            self.bottompaned.set_position(width/2)
+        else:
+            self.bottompaned.set_position(width)
+
+    def event_full_playlist(self):
+        log = logging.getLogger(__name__ + "." + self.__class__.__name__ + "." + inspect.stack()[0].function)
+        width = self.get_width()
+        position = self.bottompaned.get_position()
+        log.debug("position: %d, width: %d" % (position, width))
+        if position < 5:
+            self.bottompaned.set_position(width/2)
+        else:
+            self.bottompaned.set_position(0)
 
     def add_to_playlist(self):
         """
@@ -1157,7 +1202,12 @@ class MpdFrontWindow(Gtk.Window):
         if response in (1, 2): ## Add or replace
             if self.browser_selected_items[-1].get_metatype() in (Constants.label_t_song, Constants.label_t_file):
                 log.debug("adding song: %s" % self.browser_selected_items[-1].get_metadata())
-                self.app.mpd_add(self.browser_selected_items[-1].get_metadata('data')['file'])
+                if self.browser_selected_items[-1].get_metatype() == Constants.label_t_song:
+                    self.app.mpd_add(self.browser_selected_items[-1].get_metadata('file'))
+                elif self.browser_selected_items[-1].get_metatype() == Constants.label_t_file:
+                    self.app.mpd_add(self.browser_selected_items[-1].get_metadata('data')['file'])
+                else:
+                    log.error("unhandled type: %s" % self.browser_selected_items[-1].get_metatype())
             elif self.browser_selected_items[-1].get_metatype() == Constants.label_t_album:
                 log.debug("adding album: %s" % self.browser_selected_items[-1].get_metaname())
                 if self.browser_selected_items[-2].get_metatype() == Constants.label_t_artist:

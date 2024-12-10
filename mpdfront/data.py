@@ -15,15 +15,15 @@ class ContentTreeNode(GObject.GObject):
         super().__init__(*args, **kwargs)
         self._metadata = metadata
         self._child_layer = Gio.ListStore()
-        if 'name' in metadata.keys():
+        if 'name' in metadata:
             self._metaname = metadata['name']
-        if 'type' in metadata.keys():
+        if 'type' in metadata:
             self._metatype = metadata['type']
-        if 'previous' in metadata.keys():
+        if 'previous' in metadata:
             self._previous = metadata['previous']
-        if 'previous_type' in metadata.keys():
+        if 'previous_type' in metadata:
             self._previous_type = metadata['previous_type']
-        if 'next_type' in metadata.keys():
+        if 'next_type' in metadata:
             self._next_type = metadata['next_type']
 
     def get_child_layer(self):
@@ -36,7 +36,7 @@ class ContentTreeNode(GObject.GObject):
             return None
         if not key:
             return self._metadata
-        if not key in self._metadata.keys():
+        if not key in self._metadata:
             return None
         return self._metadata[key]
 
