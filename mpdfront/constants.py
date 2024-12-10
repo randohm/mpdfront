@@ -65,7 +65,7 @@ class Constants:
 
     ## sleep/wait intervals
     idle_thread_interval = 334              ## milliseconds
-    playback_update_interval_play = 1000    ## milliseconds
+    playback_refresh_interval = 1000        ## milliseconds
     reconnect_retry_sleep_secs = 1          ## seconds
-    thread_alive_check_interval = 1000      ## milliseconds
+    alive_check_interval = 5000             ## milliseconds
 
