@@ -24,6 +24,98 @@ def pp_time(secs):
     """
     return "%d:%02d" % (int(int(secs) / 60), int(secs) % 60)
 
+class KeyPressedCallback(Gtk.Widget):
+    @property
+    def key_pressed_callbacks(self):
+        if not hasattr(self, '_key_pressed_callbacks'):
+            return {}
+        return self._key_pressed_callbacks
+    @key_pressed_callbacks.setter
+    def key_pressed_callbacks(self, callbacks:dict):
+        self._key_pressed_callbacks = callbacks
+
+    @property
+    def key_pressed_callbacks_mod_meta(self):
+        if not hasattr(self, '_key_pressed_callbacks_mod_meta'):
+            return {}
+        return self._key_pressed_callbacks_mod_meta
+    @key_pressed_callbacks_mod_meta.setter
+    def key_pressed_callbacks_mod_meta(self, callbacks:dict):
+        self._key_pressed_callbacks_mod_meta = callbacks
+
+    @property
+    def key_pressed_callbacks_mod_ctrl(self):
+        if not hasattr(self, '_key_pressed_callbacks_mod_ctrl'):
+            return {}
+        return self._key_pressed_callbacks_mod_ctrl
+    @key_pressed_callbacks_mod_ctrl.setter
+    def key_pressed_callbacks_mod_ctrl(self, callbacks:dict):
+        self._key_pressed_callbacks_mod_ctrl = callbacks
+
+    @property
+    def key_pressed_callbacks_mod_alt(self):
+        if not hasattr(self, '_key_pressed_callbacks_mod_alt'):
+            return {}
+        return self._key_pressed_callbacks_mod_alt
+    @key_pressed_callbacks_mod_alt.setter
+    def key_pressed_callbacks_mod_alt(self, callbacks:dict):
+        self._key_pressed_callbacks_mod_alt = callbacks
+
+    def on_key_pressed(self, controller, keyval, keycode, state):
+        """
+        Keypress handler for toplevel widget. Responds to global keys for playback control.
+        """
+        log = logging.getLogger(__name__+"."+self.__class__.__name__+"."+inspect.stack()[0].function)
+        ctrl_pressed = state & Gdk.ModifierType.CONTROL_MASK
+        meta_pressed = state & Gdk.ModifierType.META_MASK   ## Cmd
+        alt_pressed = state & Gdk.ModifierType.ALT_MASK
+        shift_pressed = state & Gdk.ModifierType.SHIFT_MASK
+
+        ## Attempt to run the pre-defined callback.
+        log.debug("Key pressed: 0x%x, 0x%x" % (keyval, keycode))
+        try:
+            tup = None
+            if meta_pressed:
+                log.debug("meta modifier pressed")
+                tup = self.key_pressed_callbacks_mod_meta.get(keyval)
+            elif ctrl_pressed:
+                log.debug("ctrl meta modifier pressed")
+                tup = self.key_pressed_callbacks_mod_ctrl.get(keyval)
+            elif alt_pressed:
+                log.debug("alt meta modifier pressed")
+                tup = self.key_pressed_callbacks_mod_alt.get(keyval)
+            else:
+                tup = self.key_pressed_callbacks.get(keyval)
+            if tup:
+                callback = tup[0]
+                cb_args = None
+                if len(tup) >= 2:
+                    cb_args = tup[1]
+                if callback:
+                    log.debug("calling : %s" % callback)
+                    log.debug("with args: %s" % (cb_args,))
+                    if cb_args and isinstance(cb_args, tuple) and len(cb_args):
+                        log.debug("calling with args")
+                        callback(*cb_args)
+                    else:
+                        log.debug("calling with no args")
+                        callback()
+            else:
+                log.debug("no action defined for keyval: 0x%x" % keyval)
+        except KeyError as e:
+            log.debug("KeyError on callback: %s" % (e))
+        except Exception as e:
+            log.error("could not call callback: %s %s" % (type(e), e))
+
+    def add_config_keys(self, callbacks:dict, addition:dict, config:configparser):
+        log = logging.getLogger(__name__+"."+self.__class__.__name__+"."+inspect.stack()[0].function)
+        for k in addition:
+            log.debug("callback key:%s, value:%s" % (k, addition.get(k)))
+            if config.has_option(*k):
+                log.debug("option exists")
+                callbacks[ord(config.get(*k))] = addition[k]
+        log.debug("keypress callbacks: %s" % callbacks)
+
 class SongInfoDialog(Gtk.AlertDialog):
     """
     Shows a MessageDialog with song tags and information.
@@ -241,7 +333,7 @@ class IndexedListBox(Gtk.ListBox):
     def get_index(self):
         return self._index
 
-class ColumnBrowser(Gtk.Box):
+class ColumnBrowser(Gtk.Box, KeyPressedCallback):
     """
     Column browser for a tree data structure. Inherits from GtkBox.
     Creates columns with a list of GtkScrolledWindows containing a GtkListBox.
@@ -284,6 +376,13 @@ class ColumnBrowser(Gtk.Box):
         self.controller = Gtk.EventControllerKey.new()
         self.controller.connect('key-pressed', self.on_key_pressed)
         self.add_controller(self.controller)
+        self.key_pressed_callbacks = {
+            Gdk.KEY_Return:     (self.parent.add_to_playlist,),
+        }
+        callback_config_tuples = {
+            ("keys", "info"):       (self.info_popup,),
+        }
+        self.add_config_keys(self.key_pressed_callbacks, callback_config_tuples, self.app.config)
 
     def get_selected_rows(self):
         """
@@ -306,22 +405,6 @@ class ColumnBrowser(Gtk.Box):
         label.set_valign(Gtk.Align.START)
         #log.debug("returning label for: %s" % label.get_label())
         return label
-
-    def on_key_pressed(self, controller, keyval, keycode, state):
-        """
-        Keypress handler for toplevel widget. Responds to global keys for playback control.
-        """
-        #ctrl_pressed = state & Gdk.ModifierType.CONTROL_MASK
-        #cmd_pressed = state & Gdk.ModifierType.META_MASK   ## Cmd
-        #shift_pressed = state & Gdk.ModifierType.SHIFT_MASK
-        #alt_pressed = state & Gdk.ModifierType.ALT_MASK
-
-        try:
-            #log.debug("Key pressed: %x" % keyval)
-            if keyval == Gdk.KEY_Return:
-                self.parent.add_to_playlist()
-        except Exception as e:
-            log.error("error on keypress (%s): %s" % (type(e).__name__, e))
 
     def on_row_selected(self, listbox, row):
         log = logging.getLogger(__name__+"."+self.__class__.__name__+"."+inspect.stack()[0].function)
@@ -353,6 +436,18 @@ class ColumnBrowser(Gtk.Box):
                 self.parent.add_to_playlist()
         except Exception as e:
             log.error("error on row_activated (%s): %s" % (type(e).__name__, e))
+
+    def info_popup(self):
+        """
+        Call SongInfoDialog to display the song data from the selected browser row
+        """
+        log = logging.getLogger(__name__+"."+self.__class__.__name__+"."+inspect.stack()[0].function)
+        song = self.get_selected_rows()[-1].get_metadata()
+        if song is None:
+            return
+        log.debug("song info: %s" % song)
+        dialog = SongInfoDialog(self.parent, song)
+
 
 class PlaybackDisplay(Gtk.Box):
     def __init__(self, parent:Gtk.Window, app:Gtk.Application, sound_card:int=None, sound_device:int=None, *args, **kwargs):
@@ -747,7 +842,7 @@ class PlaybackDisplay(Gtk.Box):
         self.app.mpd_next()
         controller.reset()
 
-class PlaylistDisplay(Gtk.ListBox):
+class PlaylistDisplay(Gtk.ListBox, KeyPressedCallback):
     """
     Handles display and updates of the playlist. The listbox entries are controlled by a Gio.ListStore listmodel.
     """
@@ -760,9 +855,22 @@ class PlaylistDisplay(Gtk.ListBox):
         self.bind_model(model=self.liststore, create_widget_func=self.create_list_label)
         self.parent = parent
         self.app = app
+
         controller = Gtk.EventControllerKey.new()
         controller.connect("key-pressed", self.on_key_pressed)
         self.add_controller(controller)
+        self.key_pressed_callbacks = {
+            Gdk.KEY_Return:         (self.edit_popup,),
+            Gdk.KEY_Delete:         (self.track_delete,),
+            Gdk.KEY_BackSpace:      (self.track_delete,),
+        }
+        callback_config_tuples = {
+            ("keys", "info"):       (self.info_popup,),
+            ("keys", "moveup"):     (self.track_moveup,),
+            ("keys", "movedown"):   (self.track_movedown,),
+            ("keys", "delete"):     (self.track_delete,),
+        }
+        self.add_config_keys(self.key_pressed_callbacks, callback_config_tuples, self.app.config)
 
     def update(self, playlist:dict, mpd_currentsong:dict):
         self.liststore.remove_all()
@@ -791,21 +899,6 @@ class PlaylistDisplay(Gtk.ListBox):
         label.set_halign(Gtk.Align.START)
         label.set_valign(Gtk.Align.START)
         return label
-
-    def on_key_pressed(self, controller, keyval, keycode, state):
-        """
-        Event handler for playlist box key presses
-        """
-        if keyval == Gdk.KEY_Return:
-            self.edit_popup()
-        elif keyval == ord(self.parent.config.get("keys", "info")):
-            self.info_popup()
-        elif keyval == ord(self.parent.config.get("keys", "moveup")):
-            self.track_moveup()
-        elif keyval == ord(self.parent.config.get("keys", "movedown")):
-            self.track_movedown()
-        elif keyval == ord(self.parent.config.get("keys", "delete")) or keyval in (Gdk.KEY_Delete, Gdk.KEY_BackSpace):
-            self.track_delete()
 
     def edit_popup(self):
         """
@@ -872,7 +965,7 @@ class PlaylistDisplay(Gtk.ListBox):
         self.last_selected = index
         self.focus_on = "playlist"
 
-class MpdFrontWindow(Gtk.Window):
+class MpdFrontWindow(Gtk.Window, KeyPressedCallback):
     last_audiofile = ""         ## Tracks albumart for display
     browser_full = False        ## Tracks if the browser is fullscreen
     browser_hidden = False      ## Tracks if the browser is hidden
@@ -900,10 +993,6 @@ class MpdFrontWindow(Gtk.Window):
         self.set_default_size(width, height)
         self.set_resizable(True)
         self.set_decorated(True)
-
-        self.controller = Gtk.EventControllerKey.new()
-        self.controller.connect('key-pressed', self.on_key_pressed)
-        self.add_controller(self.controller)
 
         ## mainpaned is the toplevel layout container
         self.mainpaned = Gtk.Paned(orientation=Gtk.Orientation.VERTICAL)
@@ -949,8 +1038,10 @@ class MpdFrontWindow(Gtk.Window):
         self.playlist_list.select_row(self.playlist_list.get_row_at_index(self.playlist_last_selected))
         self.browser_box.columns[0].select_row(self.browser_box.columns[0].get_row_at_index(0))
 
-        ## Setup callbacks for keypress events
-        ## values of dicts are tuples with: function, args (optional)
+        ## Setup key-pressed events
+        self.controller = Gtk.EventControllerKey.new()
+        self.controller.connect('key-pressed', self.on_key_pressed)
+        self.add_controller(self.controller)
         self.key_pressed_callbacks = {
             Gdk.KEY_VoidSymbol:         (lambda: True,),
             Gdk.KEY_Up:                 (log.debug, ("UP",)), #(lambda: True,),
@@ -977,8 +1068,9 @@ class MpdFrontWindow(Gtk.Window):
         self.key_pressed_callbacks_mod_ctrl = {
             Gdk.KEY_q:                  (self.close,),
         }
+        #self.key_pressed_callbacks_mod_alt = {}
         ## keys defined in config file
-        self.key_pressed_callback_config_tuples = {
+        callback_config_tuples = {
             ("keys", "playpause"):      (self.app.mpd_toggle,),
             ("keys", "stop"):           (self.app.mpd_stop,),
             ("keys", "previous"):       (self.app.mpd_previous,),
@@ -995,56 +1087,7 @@ class MpdFrontWindow(Gtk.Window):
             ("keys", "full_playback"):  (self.event_full_playback,),
             ("keys", "full_playlist"):  (self.event_full_playlist,),
         }
-        ## add keys defined in config file
-        for k in self.key_pressed_callback_config_tuples:
-            log.debug("callback key:%s, value:%s" % (k, self.key_pressed_callback_config_tuples.get(k)))
-            if config.has_option(*k):
-                log.debug("option exists")
-                self.key_pressed_callbacks[ord(config.get(*k))] = self.key_pressed_callback_config_tuples[k]
-        log.debug("keypress callbacks: %s" % self.key_pressed_callbacks)
-
-    def on_key_pressed(self, controller, keyval, keycode, state):
-        """
-        Keypress handler for toplevel widget. Responds to global keys for playback control.
-        """
-        log = logging.getLogger(__name__+"."+self.__class__.__name__+"."+inspect.stack()[0].function)
-        ctrl_pressed = state & Gdk.ModifierType.CONTROL_MASK
-        meta_pressed = state & Gdk.ModifierType.META_MASK   ## Cmd
-        #shift_pressed = state & Gdk.ModifierType.SHIFT_MASK
-        #alt_pressed = state & Gdk.ModifierType.ALT_MASK
-
-        ## Attempt to run the pre-defined callback.
-        log.debug("Key pressed: 0x%x, 0x%x" % (keyval, keycode))
-        try:
-            tup = None
-            if meta_pressed:
-                log.debug("meta modifier pressed")
-                tup = self.key_pressed_callbacks_mod_meta.get(keyval)
-            elif ctrl_pressed:
-                log.debug("ctrl meta modifier pressed")
-                tup = self.key_pressed_callbacks_mod_meta.get(keyval)
-            else:
-                tup = self.key_pressed_callbacks.get(keyval)
-            if tup:
-                callback = tup[0]
-                cb_args = None
-                if len(tup) >= 2:
-                    cb_args = tup[1]
-                if callback:
-                    log.debug("calling : %s" % callback)
-                    log.debug("with args: %s" % (cb_args,))
-                    if cb_args and isinstance(cb_args, tuple) and len(cb_args):
-                        log.debug("calling with args")
-                        callback(*cb_args)
-                    else:
-                        log.debug("calling with no args")
-                        callback()
-            else:
-                log.debug("no action defined for keyval: 0x%x" % keyval)
-        except KeyError as e:
-            log.debug("KeyError on callback: %s" % (e))
-        except Exception as e:
-            log.error("could not call callback: %s %s" % (type(e), e))
+        self.add_config_keys(self.key_pressed_callbacks, callback_config_tuples, config)
 
     def event_outputs_dialog(self):
         self.outputs_dialog = OutputsDialog(self, self.outputs_changed)

@@ -42,11 +42,11 @@ class Constants:
 
     ## Rows for 1st column of browser
     browser_1st_column_rows = [
-        {'type': 'category', 'name': topnode_name_albumartists, 'next_type': node_t_albumartist},
-        {'type': 'category', 'name': topnode_name_artists, 'next_type': node_t_artist},
-        {'type': 'category', 'name': topnode_name_albums, 'next_type': node_t_album},
-        {'type': 'category', 'name': topnode_name_genres, 'next_type': node_t_genre},
-        {'type': 'category', 'name': topnode_name_files, 'next_type': node_t_dir},
+        {'type': node_t_category, 'name': topnode_name_albumartists, 'next_type': node_t_albumartist},
+        {'type': node_t_category, 'name': topnode_name_artists, 'next_type': node_t_artist},
+        {'type': node_t_category, 'name': topnode_name_albums, 'next_type': node_t_album},
+        {'type': node_t_category, 'name': topnode_name_genres, 'next_type': node_t_genre},
+        {'type': node_t_category, 'name': topnode_name_files, 'next_type': node_t_dir},
     ]
 
     proc_file_fmt = "/proc/asound/card%s/pcm%sp/sub%s/hw_params"  ## proc file with DAC information
