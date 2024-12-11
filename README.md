@@ -1,10 +1,9 @@
 # mpdfront
 MPD front end written in Python, with the goal of being able to use a keyboard for complete control.
 Using all keys will more easily translate to use with a remote control.
-The idea is that this will be the head on headless MPD in a home theater setup where the user can see the information up on the big screen.
+This is meant to be the head on headless MPD in a home theater setup where the user can see the information on a big screen.
 
 The app will attempt to get album art from the media file first, then look for a file named cover.{jpg,png} in the music directory.
-
 
 ## Required libraries:
 
@@ -40,7 +39,7 @@ optional arguments:
   -s, --css CSS        CSS file for the Gtk App. (default: None)
   -c, --config CONFIG  Config file. (default: ~/.config/mpdfront/mpdfront.cfg)
 ```
-A config file is required, whether it is passed as an argument or in the default location: ```~/.mpdfront/config```.
+A config file is required, whether it is passed as an argument or in the default location: ```~/.config/mpdfront/mpdfront.cfg```.
 The config file is in ini format.
 
 ### Config File Sample
@@ -56,6 +55,8 @@ music_dir=/music_dir
 sound_card=0
 sound_device=0
 logger_config=logging.yml
+resize=no
+decorations=no
 
 [keys]
 playpause=p
@@ -70,10 +71,8 @@ options=r
 cardselect=t
 browser=1
 playlist=2
-full_browser=3
-full_bottom=4
-full_playback=5
-full_playlist=6
+toggle_main=3
+toggle_bottom=4
 delete=d
 moveup=a
 movedown=s
@@ -88,6 +87,8 @@ movedown=s
 - music_dir: root music directory, normally set to the same as ```music_directory``` in mpd.conf
 - sound_card, sound_device: sound output device identifiers. ALSA device hw:2,1 would have sound_card=2, sound_device=1
 - logger_config: path to YML config for Python logging.
+- resize: yes/no for setting the window to be resizable
+- decorations: yes/no for setting window decorations, *ie. title bar, window frame* 
 
 #### keys section
 - playpause: key to toggle play/pause
@@ -101,10 +102,8 @@ movedown=s
 - options: shows the options dialog
 - browser: set focus on the browser
 - playlist: sets focus on the playlist
-- full_browser: sets the browser to full height
-- full_bottom: sets the bottom pane to full height
-- full_playback: sets the playback pane to full width
-- full_playlist: sets the playlist to full width
+- toggle_main: rotates widgets to full and split screen
+- toggle_bottom: rotates bottom widgets to full and split screen
 - delete: delete track in playlist
 - moveup: move track up in playklist
 - movedown: move track down in playlist
