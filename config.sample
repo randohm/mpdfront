@@ -9,6 +9,8 @@ music_dir=/music_dir
 sound_card=0
 sound_device=0
 logger_config=logging.yml
+resize=no
+decorations=no
 
 [keys]
 playpause=p
@@ -23,10 +25,8 @@ options=r
 cardselect=t
 browser=1
 playlist=2
-full_browser=3
-full_bottom=4
-full_playback=5
-full_playlist=6
+toggle_main=3
+toggle_bottom=4
 delete=d
 moveup=a
 movedown=s
