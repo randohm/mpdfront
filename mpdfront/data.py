@@ -8,8 +8,9 @@ log = logging.getLogger(__name__)
 
 class ContentTreeNode(GObject.GObject):
     _child_layer:Gio.ListStore = None
-    _name:str = None
-    metadata:dict = None
+    _metaname:str = None
+    _metatype:str = None
+    _metadata:dict = None
 
     def __init__(self, metadata:dict, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -32,8 +33,6 @@ class ContentTreeNode(GObject.GObject):
         return self._child_layer
 
     def get_metadata(self, key:str=None):
-        if not hasattr(self, "_metadata"):
-            return None
         if not key:
             return self._metadata
         if not key in self._metadata:

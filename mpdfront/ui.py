@@ -16,27 +16,6 @@ from gi.repository import Gtk, Gdk, GdkPixbuf, GObject, Pango, GLib, Gio
 
 log = logging.getLogger(__name__)
 
-def listbox_cmp(row1, row2, data, notify_destroy):
-    """
-    Compare function for Gtk.ListBox sorting. Does a simple string cmp on the rows' text
-    Args:
-        Standard args for Gtk.ListBox sort compare function.
-    """
-    return row1.get_child().get_text() > row2.get_child().get_text()
-
-def listbox_cmp_by_track(row1, row2, data, notify_destroy):
-    """
-    Compare function for Gtk.ListBox sorting. Modifies the text before comparison.
-    Args:
-        Standard args for Gtk.ListBox sort compare function.
-    """
-    if not ('track' in row1.get_child().metadata['track'] and 'track' in row2.get_child().metadata['track']):
-        return 0
-    row1_value = int(row1.get_child().metadata['track'])
-    row2_value = int(row2.get_child().metadata['track'])
-
-    return row1_value > row2_value
-
 def pp_time(secs):
     """
     Pretty-print time convenience function. Takes a count of seconds and formats to MM:SS.
@@ -364,7 +343,7 @@ class ColumnBrowser(Gtk.Box):
             self.columns[i].bind_model(model=None, create_widget_func=None)
         ## load and show the next column to the right based on the current column
         self.app.load_content_data(node=node)
-        if node.get_metatype() not in (Constants.label_t_song, Constants.label_t_file) and listbox.get_index() < self.num_columns-1:
+        if node.get_metatype() not in (Constants.node_t_song, Constants.node_t_file) and listbox.get_index() < self.num_columns-1:
             self.columns[listbox.get_index()+1].bind_model(model=node.get_child_layer(), create_widget_func=self.create_list_label)
 
     def on_row_activated(self, listbox, listboxrow):
@@ -910,9 +889,17 @@ class MpdFrontWindow(Gtk.Window):
         self.config = config
         self.app = application
         self.content_tree = content_tree
-        self.set_default_size(int(config.get("main", "width")), int(config.get("main", "height")))
-        self.set_resizable(False)
-        self.set_decorated(False)
+
+        ## Set basic window properties
+        width = Constants.default_width
+        height = Constants.default_height
+        if config.has_option("main", "width"):
+            width = int(config.get("main", "width"))
+        if config.has_option("main", "height"):
+            height = int(config.get("main", "height"))
+        self.set_default_size(width, height)
+        self.set_resizable(True)
+        self.set_decorated(True)
 
         self.controller = Gtk.EventControllerKey.new()
         self.controller.connect('key-pressed', self.on_key_pressed)
@@ -933,8 +920,14 @@ class MpdFrontWindow(Gtk.Window):
         self.bottompaned = Gtk.Paned(orientation=Gtk.Orientation.HORIZONTAL)
         self.mainpaned.set_end_child(self.bottompaned)
 
-        self.playback_display = PlaybackDisplay(parent=self, app=self.app, sound_card=self.config.get("main", "sound_card"),
-                                                sound_device=self.config.get("main", "sound_device"))
+        ## Setup playback display
+        sound_card = None
+        sound_device = None
+        if self.config.has_option("main", "sound_card"):
+            sound_card = self.config.get("main", "sound_card")
+        if self.config.has_option("main", "sound_device"):
+            sound_device = self.config.get("main", "sound_device")
+        self.playback_display = PlaybackDisplay(parent=self, app=self.app, sound_card=sound_card, sound_device=sound_device)
         self.bottompaned.set_start_child(self.playback_display)
 
         ## Setup playlist
@@ -970,6 +963,8 @@ class MpdFrontWindow(Gtk.Window):
             Gdk.KEY_AudioStop:          (self.app.mpd_stop,),
             Gdk.KEY_AudioPrev:          (self.app.mpd_previous,),
             Gdk.KEY_AudioNext:          (self.app.mpd_next,),
+            Gdk.KEY_AudioRewind:        (self.app.mpd_seekcur, (Constants.rewind_arg,)),
+            Gdk.KEY_AudioForward:       (self.app.mpd_seekcur, (Constants.cue_arg,)),
             Gdk.KEY_v:                  (self.set_dividers,),
             Gdk.KEY_q:                  (log.debug, ("pressed q",)),
             Gdk.KEY_b:                  (data.dump, (self.content_tree,)),
@@ -1131,12 +1126,12 @@ class MpdFrontWindow(Gtk.Window):
         """
         self.browser_selected_items = self.browser_box.get_selected_rows()
         log.debug("selected items: %s" % self.browser_selected_items)
-        if not self.browser_selected_items[-1].get_metatype() in (Constants.label_t_song, Constants.label_t_album, Constants.label_t_file):
+        if not self.browser_selected_items[-1].get_metatype() in (Constants.node_t_song, Constants.node_t_album, Constants.node_t_file):
             return
         add_item_name = ""
         for i in range(1, len(self.browser_selected_items)):
             log.debug("confirming add item: %s" % self.browser_selected_items[i].get_metaname())
-            if self.browser_selected_items[i].get_metatype() == Constants.label_t_song:
+            if self.browser_selected_items[i].get_metatype() == Constants.node_t_song:
                 add_item_name += self.browser_selected_items[i].get_metadata('title') + " "
             else:
                 add_item_name += self.browser_selected_items[i].get_metaname() + " "
@@ -1200,25 +1195,25 @@ class MpdFrontWindow(Gtk.Window):
             ## Clear list before adding for "replace"
             self.app.mpd_clear()
         if response in (1, 2): ## Add or replace
-            if self.browser_selected_items[-1].get_metatype() in (Constants.label_t_song, Constants.label_t_file):
+            if self.browser_selected_items[-1].get_metatype() in (Constants.node_t_song, Constants.node_t_file):
                 log.debug("adding song: %s" % self.browser_selected_items[-1].get_metadata())
-                if self.browser_selected_items[-1].get_metatype() == Constants.label_t_song:
+                if self.browser_selected_items[-1].get_metatype() == Constants.node_t_song:
                     self.app.mpd_add(self.browser_selected_items[-1].get_metadata('file'))
-                elif self.browser_selected_items[-1].get_metatype() == Constants.label_t_file:
+                elif self.browser_selected_items[-1].get_metatype() == Constants.node_t_file:
                     self.app.mpd_add(self.browser_selected_items[-1].get_metadata('data')['file'])
                 else:
                     log.error("unhandled type: %s" % self.browser_selected_items[-1].get_metatype())
-            elif self.browser_selected_items[-1].get_metatype() == Constants.label_t_album:
+            elif self.browser_selected_items[-1].get_metatype() == Constants.node_t_album:
                 log.debug("adding album: %s" % self.browser_selected_items[-1].get_metaname())
-                if self.browser_selected_items[-2].get_metatype() == Constants.label_t_artist:
+                if self.browser_selected_items[-2].get_metatype() == Constants.node_t_artist:
                     log.debug("adding album by artist: %s" % self.browser_selected_items[-2].get_metaname())
                     self.app.mpd_findadd("artist", self.browser_selected_items[-2].get_metatype(), "album",
                                          self.browser_selected_items[-1].get_metaname())
-                elif self.browser_selected_items[-2].get_metatype() == Constants.label_t_albumartist:
+                elif self.browser_selected_items[-2].get_metatype() == Constants.node_t_albumartist:
                     log.debug("adding album by albumartist: %s" % self.browser_selected_items[-2].get_metaname())
                     self.app.mpd_findadd("albumartist", self.browser_selected_items[-2].get_metaname(), "album",
                                          self.browser_selected_items[-1].get_metaname())
-                elif self.browser_selected_items[-2].get_metatype() == Constants.label_t_genre:
+                elif self.browser_selected_items[-2].get_metatype() == Constants.node_t_genre:
                     log.debug("adding album by genre: %s" % self.browser_selected_items[-2].get_metaname())
                     self.app.mpd_findadd("genre", self.browser_selected_items[-2].get_metaname(), "album",
                                          self.browser_selected_items[-1].get_metaname())

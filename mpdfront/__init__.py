@@ -26,7 +26,7 @@ def main():
     arg_parser.add_argument("-H", "--host", action='store', help="Remote host name or IP address.")
     arg_parser.add_argument("-p", "--port", type=int, action='store', help="Remote TCP port number.")
     arg_parser.add_argument("-s", "--css", action='store', help="CSS file for the Gtk App.")
-    arg_parser.add_argument("-c", "--config", default=Constants.config_file, action='store', help="Config file.")
+    arg_parser.add_argument("-c", "--config", default=Constants.default_config_file, action='store', help="Config file.")
     args = arg_parser.parse_args()
 
     ## load configs and run application

@@ -1,13 +1,14 @@
 import os
 
 class Constants:
+    application_id = "com.github.randohm.mpdfront"
+
     default_host = "localhost"
     default_port = 6600
-    application_id = "com.github.randohm.mpdfront"
+    default_width = 1920
+    default_height = 1080
+    default_config_file = os.environ['HOME'] + "/.config/mpdfront/mpdfront.cfg"
     log_format = "%(asctime)s %(levelname)s %(threadName)s %(module)s::%(funcName)s(%(lineno)d): %(message)s"
-    config_file = os.environ['HOME'] + "/.config/mpdfront/mpdfront.cfg"
-    idle_sleep_retry_connect = 2
-    display_referesh_interval = 330
     browser_num_columnns = 4
 
     rewind_arg = "-5"
@@ -22,14 +23,7 @@ class Constants:
     symbol_cue = chr(9654) + chr(9654)
     symbol_next = chr(9654) + " " + chr(9612)
 
-    ## Key codes
-    keyval_play = 0x1008ff14
-    keyval_rewind = 0x1008ff3e
-    keyval_cue = 0x1008ff97
-    keyval_previous = 0x1008ff16
-    keyval_next = 0x1008ff17
-
-    ## names of data nodes
+    ## names of toplevel data nodes
     topnode_name_albumartists = "Album Artists"
     topnode_name_artists = "Artists"
     topnode_name_albums = "Albums"
@@ -37,22 +31,22 @@ class Constants:
     topnode_name_files = "Files"
 
     ## label metatypes
-    label_t_category = "category"
-    label_t_albumartist = "albumartist"
-    label_t_artist = "artist"
-    label_t_album = "album"
-    label_t_genre = "genre"
-    label_t_dir = "directory"
-    label_t_file = "file"
-    label_t_song = "song"
+    node_t_category = "category"
+    node_t_albumartist = "albumartist"
+    node_t_artist = "artist"
+    node_t_album = "album"
+    node_t_genre = "genre"
+    node_t_dir = "directory"
+    node_t_file = "file"
+    node_t_song = "song"
 
     ## Rows for 1st column of browser
     browser_1st_column_rows = [
-        {'type': 'category', 'name': topnode_name_albumartists, 'next_type': label_t_albumartist},
-        {'type': 'category', 'name': topnode_name_artists, 'next_type': label_t_artist},
-        {'type': 'category', 'name': topnode_name_albums, 'next_type': label_t_album},
-        {'type': 'category', 'name': topnode_name_genres, 'next_type': label_t_genre},
-        {'type': 'category', 'name': topnode_name_files, 'next_type': label_t_dir},
+        {'type': 'category', 'name': topnode_name_albumartists, 'next_type': node_t_albumartist},
+        {'type': 'category', 'name': topnode_name_artists, 'next_type': node_t_artist},
+        {'type': 'category', 'name': topnode_name_albums, 'next_type': node_t_album},
+        {'type': 'category', 'name': topnode_name_genres, 'next_type': node_t_genre},
+        {'type': 'category', 'name': topnode_name_files, 'next_type': node_t_dir},
     ]
 
     proc_file_fmt = "/proc/asound/card%s/pcm%sp/sub%s/hw_params"  ## proc file with DAC information
