@@ -30,7 +30,7 @@ class Constants:
     topnode_name_genres = "Genres"
     topnode_name_files = "Files"
 
-    ## label metatypes
+    ## node metatypes
     node_t_category = "category"
     node_t_albumartist = "albumartist"
     node_t_artist = "artist"
@@ -63,3 +63,7 @@ class Constants:
     reconnect_retry_sleep_secs = 1          ## seconds
     alive_check_interval = 5000             ## milliseconds
 
+    config_section_main = "main"
+    config_section_keys = "keys"
+
+    divider_tolerance = 5

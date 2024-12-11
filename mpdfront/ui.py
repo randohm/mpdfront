@@ -380,7 +380,7 @@ class ColumnBrowser(Gtk.Box, KeyPressedCallback):
             Gdk.KEY_Return:     (self.parent.add_to_playlist,),
         }
         callback_config_tuples = {
-            ("keys", "info"):       (self.info_popup,),
+            (Constants.config_section_keys, "info"):       (self.info_popup,),
         }
         self.add_config_keys(self.key_pressed_callbacks, callback_config_tuples, self.app.config)
 
@@ -865,10 +865,10 @@ class PlaylistDisplay(Gtk.ListBox, KeyPressedCallback):
             Gdk.KEY_BackSpace:      (self.track_delete,),
         }
         callback_config_tuples = {
-            ("keys", "info"):       (self.info_popup,),
-            ("keys", "moveup"):     (self.track_moveup,),
-            ("keys", "movedown"):   (self.track_movedown,),
-            ("keys", "delete"):     (self.track_delete,),
+            (Constants.config_section_keys, "info"):       (self.info_popup,),
+            (Constants.config_section_keys, "moveup"):     (self.track_moveup,),
+            (Constants.config_section_keys, "movedown"):   (self.track_movedown,),
+            (Constants.config_section_keys, "delete"):     (self.track_delete,),
         }
         self.add_config_keys(self.key_pressed_callbacks, callback_config_tuples, self.app.config)
 
@@ -986,13 +986,24 @@ class MpdFrontWindow(Gtk.Window, KeyPressedCallback):
         ## Set basic window properties
         width = Constants.default_width
         height = Constants.default_height
-        if config.has_option("main", "width"):
-            width = int(config.get("main", "width"))
-        if config.has_option("main", "height"):
-            height = int(config.get("main", "height"))
+        if config.has_option(Constants.config_section_main, "width"):
+            width = int(config.get(Constants.config_section_main, "width"))
+        if config.has_option(Constants.config_section_main, "height"):
+            height = int(config.get(Constants.config_section_main, "height"))
         self.set_default_size(width, height)
-        self.set_resizable(True)
-        self.set_decorated(True)
+        if (config.has_option(Constants.config_section_main, "resize") and
+                re.match(r'yes$', config.get(Constants.config_section_main, "resize"), re.IGNORECASE)):
+            self.set_resizable(True)
+        else:
+            self.set_resizable(False)
+        if (config.has_option(Constants.config_section_main, "decorations") and
+                re.match(r'yes$', config.get(Constants.config_section_main, "decorations"), re.IGNORECASE)):
+            self.set_decorated(True)
+        else:
+            self.set_decorated(False)
+        if (config.has_option(Constants.config_section_main, "fullscreen") and
+                re.match(r'yes$', config.get(Constants.config_section_main, "fullscreen"), re.IGNORECASE)):
+            self.fullscreen()
 
         ## mainpaned is the toplevel layout container
         self.mainpaned = Gtk.Paned(orientation=Gtk.Orientation.VERTICAL)
@@ -1012,10 +1023,10 @@ class MpdFrontWindow(Gtk.Window, KeyPressedCallback):
         ## Setup playback display
         sound_card = None
         sound_device = None
-        if self.config.has_option("main", "sound_card"):
-            sound_card = self.config.get("main", "sound_card")
-        if self.config.has_option("main", "sound_device"):
-            sound_device = self.config.get("main", "sound_device")
+        if self.config.has_option(Constants.config_section_main, "sound_card"):
+            sound_card = self.config.get(Constants.config_section_main, "sound_card")
+        if self.config.has_option(Constants.config_section_main, "sound_device"):
+            sound_device = self.config.get(Constants.config_section_main, "sound_device")
         self.playback_display = PlaybackDisplay(parent=self, app=self.app, sound_card=sound_card, sound_device=sound_device)
         self.bottompaned.set_start_child(self.playback_display)
 
@@ -1030,9 +1041,6 @@ class MpdFrontWindow(Gtk.Window, KeyPressedCallback):
         ## Set event handlers
         self.connect("destroy", self.close)
         self.connect("state_flags_changed", self.on_state_flags_changed)
-
-        if config.has_option("main", "fullscreen") and re.match(r'yes$', config.get("main", "fullscreen"), re.IGNORECASE):
-            self.fullscreen()
 
         self.playlist_last_selected = 0
         self.playlist_list.select_row(self.playlist_list.get_row_at_index(self.playlist_last_selected))
@@ -1071,21 +1079,19 @@ class MpdFrontWindow(Gtk.Window, KeyPressedCallback):
         #self.key_pressed_callbacks_mod_alt = {}
         ## keys defined in config file
         callback_config_tuples = {
-            ("keys", "playpause"):      (self.app.mpd_toggle,),
-            ("keys", "stop"):           (self.app.mpd_stop,),
-            ("keys", "previous"):       (self.app.mpd_previous,),
-            ("keys", "next"):           (self.app.mpd_next,),
-            ("keys", "rewind"):         (self.app.mpd_seekcur, (Constants.rewind_arg,)),
-            ("keys", "cue"):            (self.app.mpd_seekcur, (Constants.cue_arg,)),
-            ("keys", "outputs"):        (self.event_outputs_dialog,),
-            ("keys", "options"):        (self.event_options_dialog,),
-            ("keys", "cardselect"):     (self.event_cardselect_dialog,),
-            ("keys", "browser"):        (self.event_focus_browser,),
-            ("keys", "playlist"):       (self.event_focus_playlist,),
-            ("keys", "full_browser"):   (self.event_full_browser,),
-            ("keys", "full_bottom"):    (self.event_full_bottom,),
-            ("keys", "full_playback"):  (self.event_full_playback,),
-            ("keys", "full_playlist"):  (self.event_full_playlist,),
+            (Constants.config_section_keys, "playpause"):      (self.app.mpd_toggle,),
+            (Constants.config_section_keys, "stop"):           (self.app.mpd_stop,),
+            (Constants.config_section_keys, "previous"):       (self.app.mpd_previous,),
+            (Constants.config_section_keys, "next"):           (self.app.mpd_next,),
+            (Constants.config_section_keys, "rewind"):         (self.app.mpd_seekcur, (Constants.rewind_arg,)),
+            (Constants.config_section_keys, "cue"):            (self.app.mpd_seekcur, (Constants.cue_arg,)),
+            (Constants.config_section_keys, "outputs"):        (self.event_outputs_dialog,),
+            (Constants.config_section_keys, "options"):        (self.event_options_dialog,),
+            (Constants.config_section_keys, "cardselect"):     (self.event_cardselect_dialog,),
+            (Constants.config_section_keys, "browser"):        (self.event_focus_browser,),
+            (Constants.config_section_keys, "playlist"):       (self.event_focus_playlist,),
+            (Constants.config_section_keys, "toggle_main"):    (self.event_toggle_main,),
+            (Constants.config_section_keys, "toggle_bottom"):  (self.event_toggle_bottom,),
         }
         self.add_config_keys(self.key_pressed_callbacks, callback_config_tuples, config)
 
@@ -1119,49 +1125,37 @@ class MpdFrontWindow(Gtk.Window, KeyPressedCallback):
             self.playlist_list.select_row(selected_row)
         selected_row.grab_focus()
 
-    def event_full_browser(self):
+    def event_toggle_main(self):
+        """
+        Rotates through full and split screen for the main window. Rotation: split, browser full, bottom full
+        """
         log = logging.getLogger(__name__ + "." + self.__class__.__name__ + "." + inspect.stack()[0].function)
         height = self.get_height()
         position = self.mainpaned.get_position()
-        if position > (height-5):
-            log.debug("setting browser to split screen")
+        if position < Constants.divider_tolerance:
+            log.debug("setting main to split screen")
             self.mainpaned.set_position(height/2)
+        elif position > (height - Constants.divider_tolerance):
+            log.debug("setting bottom to full screen")
+            self.mainpaned.set_position(0)
         else:
             log.debug("setting browser to full screen")
             self.mainpaned.set_position(height)
 
-    def event_full_bottom(self):
-        log = logging.getLogger(__name__ + "." + self.__class__.__name__ + "." + inspect.stack()[0].function)
-        height = self.get_height()
-        position = self.mainpaned.get_position()
-        log.debug("position: %d, height: %d" % (position, height))
-        if position < 5:
-            log.debug("setting bottom to split screen")
-            self.mainpaned.set_position(height/2)
-        else:
-            log.debug("setting bottom to full screen")
-            self.mainpaned.set_position(0)
-
-    def event_full_playback(self):
+    def event_toggle_bottom(self):
+        """
+        Rotates through full and split screen for the bottom paned. Rotation: split, playlist full, playlist full
+        :return:
+        """
         log = logging.getLogger(__name__ + "." + self.__class__.__name__ + "." + inspect.stack()[0].function)
         width = self.get_width()
         position = self.bottompaned.get_position()
-        log.debug("position: %d, width: %d" % (position, width))
-        ## old
-        if position > (width-5):
+        if position < Constants.divider_tolerance:
             self.bottompaned.set_position(width/2)
+        elif position > (width - Constants.divider_tolerance):
+            self.bottompaned.set_position(0)
         else:
             self.bottompaned.set_position(width)
-
-    def event_full_playlist(self):
-        log = logging.getLogger(__name__ + "." + self.__class__.__name__ + "." + inspect.stack()[0].function)
-        width = self.get_width()
-        position = self.bottompaned.get_position()
-        log.debug("position: %d, width: %d" % (position, width))
-        if position < 5:
-            self.bottompaned.set_position(width/2)
-        else:
-            self.bottompaned.set_position(0)
 
     def add_to_playlist(self):
         """

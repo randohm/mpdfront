@@ -58,30 +58,30 @@ class MpdFrontApp(Gtk.Application):
         super().__init__(*args, **kwargs)
         self.config = config
         self.idle_queue = queue.Queue()
-        if config.has_option("main", "sound_card"):
-            self.card_id = int(config.get("main", "sound_card"))
-        if config.has_option("main", "sound_device"):
-            self.device_id = int(config.get("main", "sound_device"))
+        if config.has_option(Constants.config_section_main, "sound_card"):
+            self.card_id = int(config.get(Constants.config_section_main, "sound_card"))
+        if config.has_option(Constants.config_section_main, "sound_device"):
+            self.device_id = int(config.get(Constants.config_section_main, "sound_device"))
         if css_file:
             self.css_file = css_file
-        elif config.has_option("main", "style"):
-            self.css_file = config.get("main", "style")
+        elif config.has_option(Constants.config_section_main, "style"):
+            self.css_file = config.get(Constants.config_section_main, "style")
         else:
             self.css_file = None
         if host:
             self.host = host
-        elif config.has_option("main", "host"):
-            self.host = config.get("main", "host")
+        elif config.has_option(Constants.config_section_main, "host"):
+            self.host = config.get(Constants.config_section_main, "host")
         else:
             self.host = Constants.default_host
         if port:
             self.port = port
-        elif config.has_option("main", "port"):
-            self.port = int(config.get("main", "port"))
+        elif config.has_option(Constants.config_section_main, "port"):
+            self.port = int(config.get(Constants.config_section_main, "port"))
         else:
             self.port = Constants.default_port
-        if config.has_option("main", "music_dir"):
-            self.music_dir = config.get("main", "music_dir")
+        if config.has_option(Constants.config_section_main, "music_dir"):
+            self.music_dir = config.get(Constants.config_section_main, "music_dir")
 
         ## Connect to MPD
         try:
