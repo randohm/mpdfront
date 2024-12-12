@@ -101,9 +101,9 @@ class Client:
                     retries += 1
                     continue
             try:
-                log.debug("callback: %s" % callback.__name__)
+                #log.debug("callback: %s" % callback.__name__)
                 ret = callback(*args, **kwargs)
-                log.debug("callback returned type: %s" % type(ret))
+                #log.debug("callback returned type: %s" % type(ret))
                 return ret
             except (musicpd.ConnectionError, BrokenPipeError, ConnectionResetError, ConnectionError,
                     ConnectionAbortedError, ConnectionRefusedError) as e:
@@ -177,6 +177,7 @@ class IdleClientThread(ClientThread):
         Listens for changes from MPD, using the idle command.
         Updates UI to idle()
         """
+        log = logging.getLogger(__name__+"."+self.__class__.__name__+"."+inspect.stack()[0].function)
         try:
             log.debug("sending idle")
             self.mpd.send_idle()

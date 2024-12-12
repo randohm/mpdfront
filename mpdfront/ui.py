@@ -24,7 +24,7 @@ def pp_time(secs):
     """
     return "%d:%02d" % (int(int(secs) / 60), int(secs) % 60)
 
-class KeyPressedCallback(Gtk.Widget):
+class KeyPressedReceiver(Gtk.Widget):
     @property
     def key_pressed_callbacks(self):
         if not hasattr(self, '_key_pressed_callbacks'):
@@ -60,6 +60,11 @@ class KeyPressedCallback(Gtk.Widget):
     @key_pressed_callbacks_mod_alt.setter
     def key_pressed_callbacks_mod_alt(self, callbacks:dict):
         self._key_pressed_callbacks_mod_alt = callbacks
+
+    def set_key_pressed_controller(self):
+        self.key_pressed_controller = Gtk.EventControllerKey.new()
+        self.key_pressed_controller.connect('key-pressed', self.on_key_pressed)
+        self.add_controller(self.key_pressed_controller)
 
     def on_key_pressed(self, controller, keyval, keycode, state):
         """
@@ -121,7 +126,6 @@ class SongInfoDialog(Gtk.AlertDialog):
     Shows a MessageDialog with song tags and information.
     Click OK to exit.
     """
-
     def __init__(self, parent, song, *args, **kwargs):
         """
         Build markup text to display, display markup text
@@ -160,7 +164,6 @@ class CardSelectDialog(Gtk.Dialog):
     It is not associated to the outputs configured in MPD.
     Button click events are handled by a callback function passed to __init__.
     """
-
     def __init__(self, parent, button_pressed_callback, *args, **kwargs):
         """
         :param parent: parent window
@@ -211,7 +214,6 @@ class OutputsDialog(Gtk.Dialog):
     Display dialog with list of outputs as individual CheckButtons. These are outputs defined in MPD.
     Button click events are handled by a callback function passed to __init__.
     """
-
     def __init__(self, parent, button_pressed_callback, *args, **kwargs):
         """
         :param parent: parent window
@@ -283,24 +285,36 @@ class OptionsDialog(Gtk.Dialog):
         self.destroy()
 
 class PlaylistConfirmDialog(Gtk.Dialog):
+    _button_text_add        = "Add"
+    _button_text_replace    = "Replace"
+    _button_text_cancel     = "Cancel"
     def __init__(self, parent, add_item_name, *args, **kwargs):
-        super().__init__(title="Update playlist?", parent=parent, *args, **kwargs)
+        super().__init__(title="Update playlist?", *args, **kwargs)
         self.set_transient_for(parent)
         self.set_modal(True)
-        self.add_button("Add", 1)
-        self.add_button("Replace", 2)
-        self.add_button("Cancel", 3)
+        self.add_button(self._button_text_add, Constants.playlist_confirm_reponse_add)
+        self.add_button(self._button_text_replace, Constants.playlist_confirm_reponse_replace)
+        self.add_button(self._button_text_cancel, Constants.playlist_confirm_reponse_cancel)
         self.get_content_area().append(Gtk.Label(label="Selected: " + add_item_name))
         self.get_content_area().set_size_request(300, 100)
 
 class PlaylistEditDialog(Gtk.Dialog):
+    _button_text_play       = "Play"
+    _button_text_up         = "Up"
+    _button_text_down       = "Down"
+    _button_text_delete     = "Delete"
+    _button_text_cancel     = "Cancel"
     def __init__(self, parent, song, *args, **kwargs):
-        super().__init__(title="Edit playlist", parent=parent, *args, **kwargs)
+        super().__init__(title="Edit playlist", *args, **kwargs)
         self.set_transient_for(parent)
         self.set_modal(True)
 
-        for button_tuple in (("Play", 4), ("Up", 1), ("Down", 2), ("Delete", 3), ("Cancel", 0)):
-            self.add_button(button_tuple[0], button_tuple[1])
+        for tup in ((self._button_text_play, Constants.playlist_edit_response_play), 
+                             (self._button_text_up, Constants.playlist_edit_response_up), 
+                             (self._button_text_down, Constants.playlist_edit_response_down), 
+                             (self._button_text_delete, Constants.playlist_edit_response_delete), 
+                             (self._button_text_cancel, Constants.playlist_confirm_reponse_cancel)):
+            self.add_button(tup[0], tup[1])
         if 'title' in song:
             self.get_content_area().append(Gtk.Label(label="Edit: " + song['title']))
         else:
@@ -317,7 +331,11 @@ class ContentTreeLabel(Gtk.Label):
         self._node = node
 
     def get_node(self):
+        if not hasattr(self, '_node'):
+            return None
         return self._node
+
+    node = property(fget=get_node, fset=set_node)
 
 class IndexedListBox(Gtk.ListBox):
     """
@@ -331,9 +349,13 @@ class IndexedListBox(Gtk.ListBox):
         self._index = index
 
     def get_index(self):
+        if not hasattr(self, '_index'):
+            return None
         return self._index
 
-class ColumnBrowser(Gtk.Box, KeyPressedCallback):
+    index = property(fget=get_index, fset=set_index)
+
+class ColumnBrowser(Gtk.Box, KeyPressedReceiver):
     """
     Column browser for a tree data structure. Inherits from GtkBox.
     Creates columns with a list of GtkScrolledWindows containing a GtkListBox.
@@ -343,6 +365,7 @@ class ColumnBrowser(Gtk.Box, KeyPressedCallback):
         Constructor for the column browser.
         :param parent: parent object
         :param app: main application object
+        :param content_tree: Gio.ListStore containing the content metadata tree
         :param cols: int for number of colums
         :param hexpand: boolean for whether to set horizontal expansion
         :param vexpand: boolean for whether to set vertical expansion
@@ -373,9 +396,7 @@ class ColumnBrowser(Gtk.Box, KeyPressedCallback):
         ## Initialize data in 1st column
         self.columns[0].bind_model(model=content_tree, create_widget_func=self.create_list_label)
 
-        self.controller = Gtk.EventControllerKey.new()
-        self.controller.connect('key-pressed', self.on_key_pressed)
-        self.add_controller(self.controller)
+        self.set_key_pressed_controller()
         self.key_pressed_callbacks = {
             Gdk.KEY_Return:     (self.parent.add_to_playlist,),
         }
@@ -390,6 +411,7 @@ class ColumnBrowser(Gtk.Box, KeyPressedCallback):
         Inserting them into a list in order from least to highest column index.
         :return: list of selected rows' child objects.
         """
+        log = logging.getLogger(__name__ + "." + self.__class__.__name__ + "." + inspect.stack()[0].function)
         log.debug("looking for selected row")
         ret = []
         for c in self.columns:
@@ -400,10 +422,11 @@ class ColumnBrowser(Gtk.Box, KeyPressedCallback):
         return ret
 
     def create_list_label(self, node):
+        log = logging.getLogger(__name__+"."+self.__class__.__name__+"."+inspect.stack()[0].function)
         label = ContentTreeLabel(label=node.get_metaname(), node=node)
         label.set_halign(Gtk.Align.START)
         label.set_valign(Gtk.Align.START)
-        #log.debug("returning label for: %s" % label.get_label())
+        log.debug("returning label for: %s" % label.get_label())
         return label
 
     def on_row_selected(self, listbox, row):
@@ -430,6 +453,7 @@ class ColumnBrowser(Gtk.Box, KeyPressedCallback):
             self.columns[listbox.get_index()+1].bind_model(model=node.get_child_layer(), create_widget_func=self.create_list_label)
 
     def on_row_activated(self, listbox, listboxrow):
+        log = logging.getLogger(__name__ + "." + self.__class__.__name__ + "." + inspect.stack()[0].function)
         try:
             label = listboxrow.get_child()
             if label.get_metatype() in ('song', 'album'):
@@ -447,7 +471,6 @@ class ColumnBrowser(Gtk.Box, KeyPressedCallback):
             return
         log.debug("song info: %s" % song)
         dialog = SongInfoDialog(self.parent, song)
-
 
 class PlaybackDisplay(Gtk.Box):
     def __init__(self, parent:Gtk.Window, app:Gtk.Application, sound_card:int=None, sound_device:int=None, *args, **kwargs):
@@ -602,6 +625,7 @@ class PlaybackDisplay(Gtk.Box):
         self.next_button.add_controller(next_button_ctrlr)
 
     def update(self, mpd_status:dict, mpd_currentsong:dict, music_dir:str):
+        log = logging.getLogger(__name__+"."+self.__class__.__name__+"."+inspect.stack()[0].function)
         if not mpd_status:
             log.error("mpd_status not defined: %s" % mpd_status)
             return
@@ -708,6 +732,7 @@ class PlaybackDisplay(Gtk.Box):
         :param audiofile: string, path of the file containing the audio data
         :return: raw image data
         """
+        log = logging.getLogger(__name__+"."+self.__class__.__name__+"."+inspect.stack()[0].function)
         img_data = None
 
         ## Try to find album art in the media file
@@ -759,6 +784,7 @@ class PlaybackDisplay(Gtk.Box):
         Load and display image of current song if it has changed since the last time this function was run, or on the first run.
         Loads image data into a PIL.Image object, then into a GdkPixbuf object, then into a Gtk.Image object for display.
         """
+        log = logging.getLogger(__name__+"."+self.__class__.__name__+"."+inspect.stack()[0].function)
         if not mpd_currentsong or not 'file' in mpd_currentsong:
             return
 
@@ -842,7 +868,7 @@ class PlaybackDisplay(Gtk.Box):
         self.app.mpd_next()
         controller.reset()
 
-class PlaylistDisplay(Gtk.ListBox, KeyPressedCallback):
+class PlaylistDisplay(Gtk.ListBox, KeyPressedReceiver):
     """
     Handles display and updates of the playlist. The listbox entries are controlled by a Gio.ListStore listmodel.
     """
@@ -856,9 +882,7 @@ class PlaylistDisplay(Gtk.ListBox, KeyPressedCallback):
         self.parent = parent
         self.app = app
 
-        controller = Gtk.EventControllerKey.new()
-        controller.connect("key-pressed", self.on_key_pressed)
-        self.add_controller(controller)
+        self.set_key_pressed_controller()
         self.key_pressed_callbacks = {
             Gdk.KEY_Return:         (self.edit_popup,),
             Gdk.KEY_Delete:         (self.track_delete,),
@@ -873,12 +897,13 @@ class PlaylistDisplay(Gtk.ListBox, KeyPressedCallback):
         self.add_config_keys(self.key_pressed_callbacks, callback_config_tuples, self.app.config)
 
     def update(self, playlist:dict, mpd_currentsong:dict):
+        log = logging.getLogger(__name__+"."+self.__class__.__name__+"."+inspect.stack()[0].function)
         self.liststore.remove_all()
         if playlist:
-            #log.debug("playlist: %s" % playlist)
+            log.debug("playlist: %s" % playlist)
             ## Add songs to the list
             for song in playlist:
-                #log.debug("adding song to playlist: %s" % song['title'])
+                log.debug("adding song to playlist: %s" % song['title'])
                 self.liststore.append(data.ContentTreeNode(metadata=song))
             if self.last_selected != None:
                 self.select_row(self.get_row_at_index(self.last_selected))
@@ -911,18 +936,18 @@ class PlaylistDisplay(Gtk.ListBox, KeyPressedCallback):
         self.edit_playlist_dialog.show()
 
     def edit_response(self, dialog, response):
-        if response == 1:
+        if response == Constants.playlist_edit_response_up:
             self.track_moveup()
-        elif response == 2:
+        elif response == Constants.playlist_edit_response_down:
             self.track_movedown()
-        elif response == 3:
+        elif response == Constants.playlist_edit_response_delete:
             dialog.destroy()
             self.track_delete()
-        elif response == 4:
+        elif response == Constants.playlist_edit_response_play:
             song = self.get_selected_row().get_child().get_node().get_metadata()
             self.parent.mpd_playid(song['id'])
             dialog.destroy()
-        elif response == 0:
+        elif response == Constants.playlist_edit_response_cancel:
             dialog.destroy()
 
     def info_popup(self):
@@ -965,16 +990,9 @@ class PlaylistDisplay(Gtk.ListBox, KeyPressedCallback):
         self.last_selected = index
         self.focus_on = "playlist"
 
-class MpdFrontWindow(Gtk.Window, KeyPressedCallback):
-    last_audiofile = ""         ## Tracks albumart for display
-    browser_full = False        ## Tracks if the browser is fullscreen
-    browser_hidden = False      ## Tracks if the browser is hidden
-    bottom_full = False         ## Tracks if the bottom half of mainpained is fullscreen
-    last_width = 0              ## Tracks width of window when window changes size
-    last_height = 0             ## Tracks height of window when window changes size
-    playlist_last_selected = 0  ## Points to last selected song in playlist
+class MpdFrontWindow(Gtk.Window, KeyPressedReceiver):
+    #last_audiofile = ""         ## Tracks albumart for display
     focus_on = "broswer"        ## Either 'playlist' or 'browser'
-    initial_resized = False
 
     def __init__(self, config:configparser, application:Gtk.ApplicationWindow, content_tree:Gio.ListStore, *args, **kwargs):
         log = logging.getLogger(__name__+"."+self.__class__.__name__+"."+inspect.stack()[0].function)
@@ -1042,14 +1060,12 @@ class MpdFrontWindow(Gtk.Window, KeyPressedCallback):
         self.connect("destroy", self.close)
         self.connect("state_flags_changed", self.on_state_flags_changed)
 
-        self.playlist_last_selected = 0
-        self.playlist_list.select_row(self.playlist_list.get_row_at_index(self.playlist_last_selected))
+        self._playlist_last_selected = 0
+        self.playlist_list.select_row(self.playlist_list.get_row_at_index(self._playlist_last_selected))
         self.browser_box.columns[0].select_row(self.browser_box.columns[0].get_row_at_index(0))
 
         ## Setup key-pressed events
-        self.controller = Gtk.EventControllerKey.new()
-        self.controller.connect('key-pressed', self.on_key_pressed)
-        self.add_controller(self.controller)
+        self.set_key_pressed_controller()
         self.key_pressed_callbacks = {
             Gdk.KEY_VoidSymbol:         (lambda: True,),
             Gdk.KEY_Up:                 (log.debug, ("UP",)), #(lambda: True,),
@@ -1206,6 +1222,7 @@ class MpdFrontWindow(Gtk.Window, KeyPressedCallback):
         :param button: Gtk.Button, event source
         :param option: name of the option to change
         """
+        log = logging.getLogger(__name__ + "." + self.__class__.__name__ + "." + inspect.stack()[0].function)
         if option == "consume":
             self.app.mpd_consume(int(button.get_active()))
         elif option == "random":
@@ -1218,6 +1235,7 @@ class MpdFrontWindow(Gtk.Window, KeyPressedCallback):
             log.info("unhandled option: %s" % option)
 
     def soundcard_changed(self, button, change):
+        log = logging.getLogger(__name__ + "." + self.__class__.__name__ + "." + inspect.stack()[0].function)
         log.debug("changing sound card: %s = %s" % (change, button.get_value_as_int()))
         if change == "card_id":
             self.card_id = button.get_value_as_int()
@@ -1228,10 +1246,10 @@ class MpdFrontWindow(Gtk.Window, KeyPressedCallback):
         log = logging.getLogger(__name__ + "." + self.__class__.__name__ + "." + inspect.stack()[0].function)
         log.debug("dialog response: %s" % response)
         dialog.destroy()
-        if response == 2:
+        if response == Constants.playlist_confirm_reponse_replace:
             ## Clear list before adding for "replace"
             self.app.mpd_clear()
-        if response in (1, 2): ## Add or replace
+        if response in (Constants.playlist_confirm_reponse_add, Constants.playlist_confirm_reponse_replace):
             if self.browser_selected_items[-1].get_metatype() in (Constants.node_t_song, Constants.node_t_file):
                 log.debug("adding song: %s" % self.browser_selected_items[-1].get_metadata())
                 if self.browser_selected_items[-1].get_metatype() == Constants.node_t_song:
@@ -1254,6 +1272,8 @@ class MpdFrontWindow(Gtk.Window, KeyPressedCallback):
                     log.debug("adding album by genre: %s" % self.browser_selected_items[-2].get_metaname())
                     self.app.mpd_findadd("genre", self.browser_selected_items[-2].get_metaname(), "album",
                                          self.browser_selected_items[-1].get_metaname())
+                elif self.browser_selected_items[-2].get_metatype() == Constants.node_t_category:
+                    log.debug("adding album from toplevel: %s" % self.browser_selected_items[-2].get_metaname())
                 else:
                     log.error("unhandled type 2: %s" % self.browser_selected_items[-2].get_metatype())
             else:
@@ -1268,10 +1288,14 @@ class MpdFrontWindow(Gtk.Window, KeyPressedCallback):
             self.mainpaned.set_position(self.props.default_height / 2)
 
     def on_state_flags_changed(self, widget, flags):
-        #log.debug("state flags: %s" % flags)
-        if not self.initial_resized and (flags & Gtk.StateFlags.FOCUS_WITHIN):
-            self.set_dividers()
-            self.initial_resized = True
+        log = logging.getLogger(__name__ + "." + self.__class__.__name__ + "." + inspect.stack()[0].function)
+        log.debug("state flags: %s" % flags)
+        if hasattr(self, '_initial_resized'):
+            if not self._initial_resized and (flags & Gtk.StateFlags.FOCUS_WITHIN):
+                self.set_dividers()
+                self._initial_resized = True
+        else:
+            self._initial_resized = False
 
     def set_dividers(self):
         log.debug("setting dividers")

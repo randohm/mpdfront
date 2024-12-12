@@ -439,7 +439,6 @@ class MpdFrontApp(Gtk.Application):
     # by files
     def load_first_directory_level(self, node:data.ContentTreeNode):
         log = logging.getLogger(__name__+"."+self.__class__.__name__+"."+inspect.stack()[0].function)
-        log.info("logger: %s" % log)
         log.debug("directory node metadata: %s" % node.get_metadata())
         try:
             path = ""
@@ -491,6 +490,11 @@ class MpdFrontApp(Gtk.Application):
 
     def check_threads(self):
         log = logging.getLogger(__name__+"."+self.__class__.__name__+"."+inspect.stack()[0].function)
+        try:
+            self.mpd_idle_thread.thread.join(0)
+            log.debug("join() returned")
+        except Exception as e:
+            log.error("error running join: %s" % e)
         if not self.mpd_idle_thread.thread.is_alive():
             log.error("idle thread has stopped, restarting")
             try:

@@ -66,4 +66,14 @@ class Constants:
     config_section_main = "main"
     config_section_keys = "keys"
 
-    divider_tolerance = 5
+    divider_tolerance = 5       ## tolerance in pixels for how close the paned divider is to the edge
+
+    playlist_confirm_reponse_cancel = 0
+    playlist_confirm_reponse_add = 1
+    playlist_confirm_reponse_replace = 2
+
+    playlist_edit_response_cancel = 0
+    playlist_edit_response_play = 1
+    playlist_edit_response_up = 2
+    playlist_edit_response_down = 3
+    playlist_edit_response_delete = 4
