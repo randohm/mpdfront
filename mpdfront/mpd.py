@@ -65,7 +65,7 @@ class Client:
             log.debug("attempting disconnect")
             self.mpd_client.disconnect()
         except Exception as e:
-            log.debug("disconnect failed: %s" % e)
+            log.debug("disconnect failed (%s): %s" % (type(e).__name__, e))
         try:
             log.debug("attempting reconnect")
             self.mpd_client.connect()
@@ -89,13 +89,13 @@ class Client:
         retries = 0
         while True:
             if retries > 0:
-                log.debug("retry #%d try_reconnect: %s" % (retries, try_reconnect))
+                log.info("retry #%d try_reconnect: %s" % (retries, try_reconnect))
             if try_reconnect:
                 try:
                     self.reconnect()
                     try_reconnect = False
                 except Exception as e:
-                    log.error("reconnect failed: %s" % e)
+                    log.error("reconnect failed (%s): %s" % (type(e).__name__, e))
                     time.sleep(Constants.reconnect_retry_sleep_secs)
                     try_reconnect = True
                     retries += 1
@@ -103,11 +103,11 @@ class Client:
             try:
                 #log.debug("callback: %s" % callback.__name__)
                 ret = callback(*args, **kwargs)
-                #log.debug("callback returned type: %s" % type(ret))
+                log.debug("callback returned: %s" % ret)
                 return ret
             except (musicpd.ConnectionError, BrokenPipeError, ConnectionResetError, ConnectionError,
                     ConnectionAbortedError, ConnectionRefusedError) as e:
-                log.error("command failed, type: %s message: %s" % (type(e).__name__, e))
+                log.error("command failed (%s): %s" % (type(e).__name__, e))
                 try_reconnect = True
                 time.sleep(Constants.reconnect_retry_sleep_secs)
                 retries += 1
@@ -185,7 +185,7 @@ class IdleClientThread(ClientThread):
             changes = self.mpd.fetch_idle()
             log.debug("fetched idle")
         except Exception as e:
-            log.error("idle failed: %s" % e)
+            log.error("idle failed (%s): %s" % (type(e).__name__, e))
             return
 
         else:

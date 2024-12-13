@@ -1,18 +1,15 @@
 import configparser
 import re, os, html, io, inspect
 import logging
-from PIL import Image
 import mutagen
-from mutagen.id3 import ID3, APIC
 from mutagen.flac import FLAC
-from mutagen.dsf import DSF
 from mutagen.mp4 import MP4
 import gi
 from . import data
 from .constants import Constants
 
 gi.require_version("Gtk", "4.0")
-from gi.repository import Gtk, Gdk, GdkPixbuf, GObject, Pango, GLib, Gio
+from gi.repository import Gtk, Gdk, GObject, Pango, GLib, Gio
 
 log = logging.getLogger(__name__)
 
@@ -110,7 +107,7 @@ class KeyPressedReceiver(Gtk.Widget):
         except KeyError as e:
             log.debug("KeyError on callback: %s" % (e))
         except Exception as e:
-            log.error("could not call callback: %s %s" % (type(e), e))
+            log.error("could not call callback (%s): %s" % (type(e).__name__, e))
 
     def add_config_keys(self, callbacks:dict, addition:dict, config:configparser):
         log = logging.getLogger(__name__+"."+self.__class__.__name__+"."+inspect.stack()[0].function)
@@ -472,31 +469,41 @@ class ColumnBrowser(Gtk.Box, KeyPressedReceiver):
         log.debug("song info: %s" % song)
         dialog = SongInfoDialog(self.parent, song)
 
-class PlaybackDisplay(Gtk.Box):
+class PlaybackDisplay(Gtk.Grid):
     def __init__(self, parent:Gtk.Window, app:Gtk.Application, sound_card:int=None, sound_device:int=None, *args, **kwargs):
-        super().__init__(orientation=Gtk.Orientation.VERTICAL, *args, **kwargs)
+        super().__init__(*args, **kwargs)
+        self.last_audiofile = None
         self.parent = parent
         self.app = app
         self.sound_card = sound_card
         self.sound_device = sound_device
         self.set_name("playback-display")
-
-        self.song_display_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
-        self.song_display_box.set_hexpand(True)
-        self.song_display_box.set_vexpand(True)
-        self.playback_info_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-        self.playback_info_box.set_hexpand(False)
-        self.playback_info_box.set_vexpand(False)
-        self.song_display_box.append(self.playback_info_box)
+        self.set_halign(Gtk.Align.FILL)
+        self.set_valign(Gtk.Align.FILL)
+        self.set_hexpand(True)
+        self.set_vexpand(True)
 
         ## Current album art
-        self.current_albumart = Gtk.Picture()
-        self.current_albumart.set_valign(Gtk.Align.END)
-        self.current_albumart.set_halign(Gtk.Align.END)
-        self.current_albumart.set_vexpand(True)
+        self.albumart_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        self.albumart_box.set_halign(Gtk.Align.END)
+        self.albumart_box.set_valign(Gtk.Align.START)
+        self.albumart_box.set_hexpand(False)
+        self.albumart_box.set_vexpand(False)
+        self.current_albumart = Gtk.Picture.new()
+        self.current_albumart.props.content_fit = Gtk.ContentFit.CONTAIN
+        self.current_albumart.set_can_shrink(True)
+        self.current_albumart.set_halign(Gtk.Align.FILL)
+        self.current_albumart.set_valign(Gtk.Align.START)
         self.current_albumart.set_hexpand(True)
-        self.song_display_box.append(self.current_albumart)
-        self.append(self.song_display_box)
+        self.current_albumart.set_vexpand(True)
+        self.albumart_box.append(self.current_albumart)
+
+        ## Box containing playback info labels+text
+        self.playback_info_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        self.playback_info_box.set_halign(Gtk.Align.BASELINE)
+        self.playback_info_box.set_valign(Gtk.Align.BASELINE)
+        self.playback_info_box.set_hexpand(False)
+        self.playback_info_box.set_vexpand(True)
 
         # song title label
         self.current_title_label = Gtk.Label(label=" ")
@@ -505,63 +512,66 @@ class PlaybackDisplay(Gtk.Box):
         self.current_title_label.set_halign(Gtk.Align.START)
         self.current_title_label.set_valign(Gtk.Align.START)
         self.current_title_label.set_wrap(True)
-        self.current_title_label.set_hexpand(False)
+        self.current_title_label.set_hexpand(True)
         self.current_title_label.set_vexpand(False)
         self.current_title_label.set_justify(Gtk.Justification.LEFT)
 
         # artist label
         self.current_artist_label = Gtk.Label(label=" ")
         self.current_artist_label.set_name("current-artist")
+        self.current_artist_label.set_ellipsize(Pango.EllipsizeMode.END)
         self.current_artist_label.set_halign(Gtk.Align.START)
         self.current_artist_label.set_valign(Gtk.Align.START)
-        self.current_artist_label.set_ellipsize(Pango.EllipsizeMode.END)
-        self.current_artist_label.set_wrap(False)
-        self.current_artist_label.set_hexpand(False)
+        self.current_artist_label.set_wrap(True)
+        self.current_artist_label.set_hexpand(True)
         self.current_artist_label.set_vexpand(False)
         self.current_artist_label.set_justify(Gtk.Justification.LEFT)
 
         # album label
         self.current_album_label = Gtk.Label(label=" ")
         self.current_album_label.set_name("current-album")
+        self.current_album_label.set_ellipsize(Pango.EllipsizeMode.END)
         self.current_album_label.set_halign(Gtk.Align.START)
         self.current_album_label.set_valign(Gtk.Align.START)
-        self.current_album_label.set_ellipsize(Pango.EllipsizeMode.END)
-        self.current_album_label.set_wrap(False)
-        self.current_album_label.set_hexpand(False)
-        self.current_album_label.set_vexpand(False)
+        self.current_album_label.set_wrap(True)
+        self.current_album_label.set_hexpand(True)
+        self.current_album_label.set_vexpand(True)
         self.current_album_label.set_justify(Gtk.Justification.LEFT)
 
         # time label
         self.current_time_label = Gtk.Label(label=" ")
         self.current_time_label.set_name("current-time")
+        self.current_time_label.set_ellipsize(Pango.EllipsizeMode.END)
         self.current_time_label.set_halign(Gtk.Align.START)
         self.current_time_label.set_valign(Gtk.Align.END)
         self.current_time_label.set_wrap(False)
-        self.current_time_label.set_hexpand(False)
+        self.current_time_label.set_hexpand(True)
         self.current_time_label.set_vexpand(False)
         self.current_time_label.set_justify(Gtk.Justification.LEFT)
 
         # stats1 label
         self.stats1_label = Gtk.Label(label=" ")
         self.stats1_label.set_name("stats1")
+        self.stats1_label.set_ellipsize(Pango.EllipsizeMode.END)
         self.stats1_label.set_halign(Gtk.Align.START)
         self.stats1_label.set_valign(Gtk.Align.END)
         self.stats1_label.set_wrap(True)
-        self.stats1_label.set_hexpand(False)
+        self.stats1_label.set_hexpand(True)
         self.stats1_label.set_vexpand(False)
         self.stats1_label.set_justify(Gtk.Justification.LEFT)
 
         # stats2 label
         self.stats2_label = Gtk.Label(label=" ")
         self.stats2_label.set_name("stats2")
+        self.stats2_label.set_ellipsize(Pango.EllipsizeMode.END)
         self.stats2_label.set_halign(Gtk.Align.START)
         self.stats2_label.set_valign(Gtk.Align.END)
         self.stats2_label.set_wrap(True)
-        self.stats2_label.set_hexpand(False)
+        self.stats2_label.set_hexpand(True)
         self.stats2_label.set_vexpand(False)
         self.stats2_label.set_justify(Gtk.Justification.LEFT)
 
-        ## Add labels to playback grid
+        ## Add labels to box
         self.playback_info_box.append(self.current_title_label)
         self.playback_info_box.append(self.current_artist_label)
         self.playback_info_box.append(self.current_album_label)
@@ -569,15 +579,27 @@ class PlaybackDisplay(Gtk.Box):
         self.playback_info_box.append(self.stats1_label)
         self.playback_info_box.append(self.stats2_label)
 
+        self._create_progressbar()
+        self._create_button_box()
+
+        self.attach(self.playback_info_box, 1, 1, 1, 1)
+        #self.attach(self.current_albumart, 2, 1, 1, 1)
+        self.attach(self.albumart_box, 2, 1, 1, 1)
+        self.attach(self.song_progress, 1, 2, 2, 1)
+        self.attach(self.playback_button_box, 1, 3, 2, 1)
+        self._set_controllers()
+
+    def _create_progressbar(self):
         ## Song progress bar
         self.song_progress = Gtk.LevelBar()
-        self.song_progress.set_size_request(-1, 20)
+        self.song_progress.set_size_request(-1, Constants.progressbar_height)
         self.song_progress.set_name("progressbar")
-        self.append(self.song_progress)
 
+    def _create_button_box(self):
         ## Setup playback button box
         self.playback_button_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
-        self.playback_button_box.set_spacing(4)
+        self.playback_button_box.set_name("button-box")
+        self.playback_button_box.set_spacing(Constants.button_box_spacing)
         self.previous_button = Gtk.Button(label=Constants.symbol_previous)
         self.rewind_button = Gtk.Button(label=Constants.symbol_rewind)
         self.stop_button = Gtk.Button(label=Constants.symbol_stop)
@@ -597,8 +619,8 @@ class PlaybackDisplay(Gtk.Box):
         self.playback_button_box.append(self.cue_button)
         self.playback_button_box.append(self.next_button)
         self.playback_button_box.set_hexpand(True)
-        self.append(self.playback_button_box)
 
+    def _set_controllers(self):
         # set button event handlers
         prev_button_ctrlr = Gtk.GestureClick.new()
         prev_button_ctrlr.connect("pressed", self.previous_clicked)
@@ -682,7 +704,7 @@ class PlaybackDisplay(Gtk.Box):
                     lines = fh.readlines()
                     fh.close()
                 except Exception as e:
-                    log.error("opening up proc file: %s" % e)
+                    log.error("opening up proc file (%s): %s" % (type(e).__name__, e))
                 for line in lines:
                     line = line.rstrip()
                     #log.debug("procfile line: %s" % line)
@@ -703,7 +725,7 @@ class PlaybackDisplay(Gtk.Box):
                     dac_text = "%3.1f kHz %d bit" % (float(dac_freq) / 1000, num_bits)
             else:
                 #log.debug("proc file does not exist")
-                None
+                pass
             self.stats1_label.set_markup("<small><b>dac:</b></small> " + dac_text)
         else:
             self.stats1_label.set_text(" ")
@@ -722,107 +744,149 @@ class PlaybackDisplay(Gtk.Box):
             self.song_progress.set_value(0)
             self.current_time_label.set_text("Stopped")
             self.last_update_offset = 0
-
         self.set_current_albumart(mpd_currentsong, music_dir)
 
-    def get_albumart(self, audiofile:dict, mpd_currentsong:dict):
+    def get_albumart_from_audiofile(self, audiofile:str):
         """
-        Extract album art from a file, or look for a cover in its directory.
-        Tries to fetch art from Last.fm if all else fails.
+        Extract album art from a file
         :param audiofile: string, path of the file containing the audio data
         :return: raw image data
         """
         log = logging.getLogger(__name__+"."+self.__class__.__name__+"."+inspect.stack()[0].function)
+        log.debug("audiofile: %s" % audiofile)
         img_data = None
 
         ## Try to find album art in the media file
         if not os.path.isfile(audiofile):
             log.debug("audio file does not exist: %s" % audiofile)
+            return None
         else:
             try:
-                if re.search(r'\.flac$', mpd_currentsong['file'], re.IGNORECASE):
+                if re.search(r'\.flac$', audiofile, re.IGNORECASE):
+                    log.debug("checking flac file")
                     a = FLAC(audiofile)
                     if len(a.pictures):
                         img_data = a.pictures[0].data
-                elif re.search(r'\.m4a$', mpd_currentsong['file'], re.IGNORECASE):
+                elif re.search(r'\.m4a$', audiofile, re.IGNORECASE):
+                    log.debug("checking mp4 file")
                     a = MP4(audiofile)
                     if 'covr' in a.tags:
                         if len(a.tags['covr']):
                             img_data = a.tags['covr'][0]
                 else:
+                    log.debug("checking generic file")
                     a = mutagen.File(audiofile)
                     for k in a:
                         if re.match(r'APIC:', k):
                             img_data = a[k].data
                             break
             except Exception as e:
-                log.error("could not open audio file: %s" % e)
-
-        ## Look for album art on the directory of the media file
-        if not img_data:
-            cover_path = ""
-            song_dir = os.path.dirname(audiofile)
-            if os.path.isdir(song_dir):
-                try:
-                    for f in os.listdir(song_dir):
-                        if re.match(r'cover\.(jpg|png|jpeg)', f, re.IGNORECASE):
-                            cover_path = song_dir + "/" + f
-                            break
-                    log.debug("looking for cover file: %s" % cover_path)
-                    if os.path.isfile(cover_path):
-                        cf = open(cover_path, 'rb')
-                        img_data = cf.read()
-                        cf.close()
-                except Exception as e:
-                    log.error("error reading cover file: %s" % e)
-        else:
-            log.debug("album art loaded from audio file")
+                log.error("could not open audio file '%s' (%s): %s" % (audiofile, type(e).__name__, e))
         return img_data
+
+    def get_albumart_filename(self, audiofile:str):
+        ## Look for album art on the directory of the media file
+        log = logging.getLogger(__name__+"."+self.__class__.__name__+"."+inspect.stack()[0].function)
+        log.debug("audiofile: %s" % audiofile)
+        cover_path = ""
+        song_dir = os.path.dirname(audiofile)
+        if os.path.isdir(song_dir):
+            try:
+                log.debug("looking for image files in directory: %s" % song_dir)
+                for f in os.listdir(song_dir):
+                    if re.match(r'.*(cover|albumart|folder).*\.(jpg|png|jpeg)', f, re.IGNORECASE):
+                        log.debug("found potential cover file: %s" % f)
+                        cover_path = song_dir + "/" + f
+                        break
+                log.debug("looking for cover file: %s" % cover_path)
+                if os.path.isfile(cover_path):
+                    return cover_path
+            except Exception as e:
+                log.error("error finding cover file (%s): %s" % (type(e).__name__, e))
+        return None
 
     def set_current_albumart(self, mpd_currentsong:dict, music_dir:str):
         """
         Load and display image of current song if it has changed since the last time this function was run, or on the first run.
-        Loads image data into a PIL.Image object, then into a GdkPixbuf object, then into a Gtk.Image object for display.
         """
         log = logging.getLogger(__name__+"."+self.__class__.__name__+"."+inspect.stack()[0].function)
         if not mpd_currentsong or not 'file' in mpd_currentsong:
+            self.current_albumart.set_paintable(None)
+            self.current_albumart.set_size_request(0, 0)
             return
 
         audiofile = music_dir + "/" + mpd_currentsong['file']
         if not hasattr(self, 'last_audiofile') or self.last_audiofile != audiofile:
             ## The file has changed since the last update, get the new album art.
             log.debug("new cover file, updating")
-            img_data = self.get_albumart(audiofile, mpd_currentsong)
+            ## Try to load image from audiofile 1st
+            img_data = self.get_albumart_from_audiofile(audiofile)
             if img_data:
-                ## Album art retrieved, load it into a pixbuf
-                img = Image.open(io.BytesIO(img_data))
-                img_bytes = GLib.Bytes.new(img.tobytes())
-                log.debug("image size: %d x %d" % img.size)
-                w, h = img.size
+                log.debug("image data found in audiofile")
                 try:
-                    if img.has_transparency_data:
-                        current_albumart_pixbuf = GdkPixbuf.Pixbuf.new_from_bytes(img_bytes, GdkPixbuf.Colorspace.RGB,
-                                                                                       True, 8, w, h, w * 4)
-                    else:
-                        current_albumart_pixbuf = GdkPixbuf.Pixbuf.new_from_bytes(img_bytes, GdkPixbuf.Colorspace.RGB,
-                                                                                       False, 8, w, h, w * 3)
+                    tex = Gdk.Texture.new_from_bytes(GLib.Bytes(img_data))
+                    log.debug("from bytes image size: %d x %d" % (tex.get_width(), tex.get_height()))
+                    self.current_albumart.set_paintable(tex)
                 except Exception as e:
-                    log.error("could not load image into pixbuf: %s" % e)
-                    return
+                    log.error("error loading image from bytes (%s): %s" % (type(e).__name__, e))
             else:
-                ## No album art, clear the image in the UI.
-                #self.current_albumart.clear()
-                self.last_audiofile = audiofile
-                return
+                log.debug("no image data found in audiofile")
+                coverfile = self.get_albumart_filename(audiofile)
+                if coverfile:
+                    try:
+                        self.current_albumart.set_filename(coverfile)
+                        paintable = self.current_albumart.get_paintable()
+                        if not paintable:
+                            log.debug("no paintable object")
+                        else:
+                            log.debug("from file image size: %d x %d" % (paintable.get_width(), paintable.get_height()))
+                    except Exception as e:
+                        log.error("error loading image from file (%s): %s" % (type(e).__name__, e))
+                else:
+                    ## No album art, clear the image in the UI.
+                    log.debug("no albumart found for: %s" % audiofile)
+                    self.current_albumart.set_paintable(None)
+                    self.current_albumart.set_size_request(0,0)
+            self.last_audiofile = audiofile
+        #self.current_albumart.set_size_request(-1, -1)
+        self.set_albumart_size()
 
-        if not hasattr(self, 'last_audiofile') or self.last_audiofile != audiofile:
-            ## Update the image
-            if current_albumart_pixbuf:
-                self.current_albumart.set_pixbuf(current_albumart_pixbuf)
-            else:
-                log.debug("could not get pixbuf, clearing album art")
-                self.current_albumart.clear()
-        self.last_audiofile = audiofile
+    def set_albumart_size(self):
+        log = logging.getLogger(__name__+"."+self.__class__.__name__+"."+inspect.stack()[0].function)
+        mpaned_div_position = self.app.window.mainpaned.get_position()
+        mpaned_width = self.app.window.mainpaned.get_width()
+        mpaned_height = self.app.window.mainpaned.get_height()
+        bottom_div_position = self.app.window.bottompaned.get_position()
+        pbar_height = self.song_progress.get_height()
+        bbox_height = self.playback_button_box.get_height()
+        pbi_width = self.playback_info_box.get_width()
+        pbi_height = self.playback_info_box.get_height()
+        right_width =  mpaned_width - bottom_div_position
+        #log.debug("height considerations: %s, %s, %s, %s" % (mpaned_height, mpaned_div_position, pbar_height, bbox_height))
+
+        req_height = mpaned_height - mpaned_div_position - pbar_height - bbox_height - Constants.pixel_tolerance
+        req_width = mpaned_width - right_width - bottom_div_position/3 - Constants.pixel_tolerance
+        log.debug("req dimensions: %d x %d" % (req_width, req_height))
+
+        aspect_ratio = 1.0
+        if self.current_albumart.get_paintable():
+            img_width = self.current_albumart.get_paintable().get_width()
+            img_height = self.current_albumart.get_paintable().get_height()
+            aspect_ratio = img_width / img_height
+            log.debug("img size: %d x %d, ratio: %f" % (img_width, img_height, aspect_ratio))
+            if req_height < img_height:
+                log.debug("resetting img size")
+                self.albumart_box.set_size_request(-1, -1)
+                return
+        if req_width > req_height:
+            log.debug("seting on req_height: %d x %d" % (req_height*aspect_ratio, req_height))
+            self.albumart_box.set_size_request(req_height*aspect_ratio, req_height)
+        else:
+            log.debug("seting req_width: %d x %d" % (req_width, req_width/aspect_ratio))
+            self.albumart_box.set_size_request(req_width, req_width/aspect_ratio)
+
+        #log.debug("req w x h: %d x %d" % (req_width, req_height))
+        #self.current_albumart.set_size_request(-1, -1)
 
     ##  Click handlers
 
@@ -991,12 +1055,11 @@ class PlaylistDisplay(Gtk.ListBox, KeyPressedReceiver):
         self.focus_on = "playlist"
 
 class MpdFrontWindow(Gtk.Window, KeyPressedReceiver):
-    #last_audiofile = ""         ## Tracks albumart for display
     focus_on = "broswer"        ## Either 'playlist' or 'browser'
 
     def __init__(self, config:configparser, application:Gtk.ApplicationWindow, content_tree:Gio.ListStore, *args, **kwargs):
         log = logging.getLogger(__name__+"."+self.__class__.__name__+"."+inspect.stack()[0].function)
-        super().__init__(application=application, *args, **kwargs)
+        super().__init__(title=Constants.window_title, application=application, *args, **kwargs)
         self.config = config
         self.app = application
         self.content_tree = content_tree
@@ -1056,14 +1119,6 @@ class MpdFrontWindow(Gtk.Window, KeyPressedReceiver):
         self.playlist_scroll.set_child(self.playlist_list)
         self.bottompaned.set_end_child(self.playlist_scroll)
 
-        ## Set event handlers
-        self.connect("destroy", self.close)
-        self.connect("state_flags_changed", self.on_state_flags_changed)
-
-        self._playlist_last_selected = 0
-        self.playlist_list.select_row(self.playlist_list.get_row_at_index(self._playlist_last_selected))
-        self.browser_box.columns[0].select_row(self.browser_box.columns[0].get_row_at_index(0))
-
         ## Setup key-pressed events
         self.set_key_pressed_controller()
         self.key_pressed_callbacks = {
@@ -1087,10 +1142,12 @@ class MpdFrontWindow(Gtk.Window, KeyPressedReceiver):
         ## callbacks for meta mod key
         self.key_pressed_callbacks_mod_meta = {
             Gdk.KEY_q:                  (self.close,),
+            Gdk.KEY_Q:                  (self.close,),
         }
         ## callbacks for ctrl mod key
         self.key_pressed_callbacks_mod_ctrl = {
             Gdk.KEY_q:                  (self.close,),
+            Gdk.KEY_Q:                  (self.close,),
         }
         #self.key_pressed_callbacks_mod_alt = {}
         ## keys defined in config file
@@ -1110,6 +1167,18 @@ class MpdFrontWindow(Gtk.Window, KeyPressedReceiver):
             (Constants.config_section_keys, "toggle_bottom"):  (self.event_toggle_bottom,),
         }
         self.add_config_keys(self.key_pressed_callbacks, callback_config_tuples, config)
+
+        ## Set initially selected widgets
+        self._playlist_last_selected = 0
+        self.playlist_list.select_row(self.playlist_list.get_row_at_index(self._playlist_last_selected))
+        self.browser_box.columns[0].select_row(self.browser_box.columns[0].get_row_at_index(0))
+
+        ## Set event handlers
+        self.connect("destroy", self.destroy)
+        self.connect("state_flags_changed", self.on_state_flags_changed)
+        self.mainpaned.connect("move-handle", self.on_mainpaned_handle_move)
+        self.mainpaned.connect("accept-position", self.on_mainpaned_handle_move)
+        self.playback_display.current_albumart.connect("realize", lambda: log.info("REALIZE!!"))
 
     def event_outputs_dialog(self):
         self.outputs_dialog = OutputsDialog(self, self.outputs_changed)
@@ -1298,13 +1367,22 @@ class MpdFrontWindow(Gtk.Window, KeyPressedReceiver):
             self._initial_resized = False
 
     def set_dividers(self):
+        log = logging.getLogger(__name__+"."+self.__class__.__name__+"."+inspect.stack()[0].function)
         log.debug("setting dividers")
-        if self.get_height():
-            self.mainpaned.set_position(self.get_height()/2)
+        if self.mainpaned.get_height():
+            self.mainpaned.set_position(self.mainpaned.get_height()/2)
+            #self.mainpaned.set_position(0)
         else:
             self.mainpaned.set_position(self.props.default_height/2)
-        if self.get_width():
-            self.bottompaned.set_position(self.get_width()/2)
+            #self.mainpaned.set_position(0)
+        if self.bottompaned.get_width():
+            self.bottompaned.set_position(self.bottompaned.get_width()/2)
+            #self.bottompaned.set_position(self.bottompaned.get_width())
         else:
             self.bottompaned.set_position(self.props.default_width/2)
-        #self.set_current_albumart()
+            #self.bottompaned.set_position(self.props.default_width)
+        #self.playback_display.set_albumart_size()
+
+    def on_mainpaned_handle_move(self):
+        log = logging.getLogger(__name__+"."+self.__class__.__name__+"."+inspect.stack()[0].function)
+        log.debug("mainpaned handle moved")

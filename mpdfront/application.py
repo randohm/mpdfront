@@ -88,7 +88,7 @@ class MpdFrontApp(Gtk.Application):
             self.mpd_client = mpd.Client(self.host, self.port)
             self.mpd_idle_thread = mpd.IdleClientThread(host=self.host, port=self.port, queue=self.idle_queue, name="idleThread")
         except Exception as e:
-            log.error("could not connect to mpd: %s" % e)
+            log.error("could not connect to mpd (%s): %s" % (type(e).__name__, e))
             raise e
 
         ## Define callbacks to handle mpd commands
@@ -159,7 +159,7 @@ class MpdFrontApp(Gtk.Application):
         #try:
         self.window = MpdFrontWindow(application=self, config=self.config, content_tree=self.content_tree)
         #except Exception as e:
-        #    log.critical("could not create main window: %s" % e)
+        #    log.critical("could not create main window (%s): %s" % (type(e).__name__, e))
         #    self.quit()
         #else:
         if self.css_file and os.path.isfile(self.css_file):
@@ -170,7 +170,7 @@ class MpdFrontApp(Gtk.Application):
                 display = Gtk.Widget.get_display(self.window)
                 Gtk.StyleContext.add_provider_for_display(display, self.css_provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
             except Exception as e:
-                log.error("could not load CSS: %s" % e)
+                log.error("could not load CSS (%s): %s" % (type(e).__name__, e))
                 #raise e
         self.add_window(self.window)
         self.window.present()
@@ -306,7 +306,7 @@ class MpdFrontApp(Gtk.Application):
                     node.get_child_layer().append(new_node)
             node.get_child_layer().sort(node_sort_filtered)
         except Exception as e:
-            log.error("could not load albumartists: %s" % e)
+            log.error("could not load albumartists (%s): %s" % (type(e).__name__, e))
 
     def load_albums_by_albumartist(self, albumartist:data.ContentTreeNode):
         try:
@@ -347,7 +347,7 @@ class MpdFrontApp(Gtk.Application):
                     node.get_child_layer().append(new_node)
             node.get_child_layer().sort(node_sort_filtered)
         except Exception as e:
-            log.error("could not load artists: %s" % e)
+            log.error("could not load artists (%s): %s" % (type(e).__name__, e))
 
     def load_albums_by_artist(self, artist:data.ContentTreeNode):
         try:
@@ -387,7 +387,7 @@ class MpdFrontApp(Gtk.Application):
                                                 'next_type': Constants.node_t_song})
                     node.get_child_layer().append(new_node)
         except Exception as e:
-            log.error("could not load albums: %s" % e)
+            log.error("could not load albums (%s): %s" % (type(e).__name__, e))
 
     def load_songs_by_album(self, album:data.ContentTreeNode):
         try:
@@ -411,7 +411,7 @@ class MpdFrontApp(Gtk.Application):
                                                 'previous': node, 'next_type': Constants.node_t_album})
                     node.get_child_layer().append(new_node)
         except Exception as e:
-            log.error("could not load genres: %s" % e)
+            log.error("could not load genres (%s): %s" % (type(e).__name__, e))
 
     def load_albums_by_genre(self, genre:data.ContentTreeNode):
         try:
@@ -459,7 +459,7 @@ class MpdFrontApp(Gtk.Application):
                     new_node = data.ContentTreeNode(metadata=metadata)
                     node.get_child_layer().append(new_node)
         except Exception as e:
-            log.error("could not load 1st level: %s" % e)
+            log.error("could not load 1st level (%s): %s" % (type(e).__name__, e))
 
     def load_directories(self, dir:data.ContentTreeNode):
         log = logging.getLogger(__name__+"."+self.__class__.__name__+"."+inspect.stack()[0].function)
@@ -472,7 +472,7 @@ class MpdFrontApp(Gtk.Application):
                 f['previous_type'] = Constants.node_t_dir
                 dir.get_child_layer().append(data.ContentTreeNode(metadata=f))
         except Exception as e:
-            log.error("could not load 2nd level: %s" % e)
+            log.error("could not load 2nd level (%s): %s" % (type(e).__name__, e))
 
     ## END content tree data loaders
 
@@ -494,14 +494,14 @@ class MpdFrontApp(Gtk.Application):
             self.mpd_idle_thread.thread.join(0)
             log.debug("join() returned")
         except Exception as e:
-            log.error("error running join: %s" % e)
+            log.error("error running join (%s): %s" % (type(e).__name__, e))
         if not self.mpd_idle_thread.thread.is_alive():
             log.error("idle thread has stopped, restarting")
             try:
                 self.mpd_idle_thread = mpd.IdleClientThread(host=self.host, port=self.port, queue=self.idle_queue,
                                                             name="idleThread")
             except Exception as e:
-                log.error("could not restart idle thread: %s" % e)
+                log.error("could not restart idle thread (%s): %s" % (type(e).__name__, e))
         else:
             log.debug("idle thread is alive")
         return True
