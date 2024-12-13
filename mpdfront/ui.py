@@ -1176,9 +1176,6 @@ class MpdFrontWindow(Gtk.Window, KeyPressedReceiver):
         ## Set event handlers
         self.connect("destroy", self.destroy)
         self.connect("state_flags_changed", self.on_state_flags_changed)
-        self.mainpaned.connect("move-handle", self.on_mainpaned_handle_move)
-        self.mainpaned.connect("accept-position", self.on_mainpaned_handle_move)
-        self.playback_display.current_albumart.connect("realize", lambda: log.info("REALIZE!!"))
 
     def event_outputs_dialog(self):
         self.outputs_dialog = OutputsDialog(self, self.outputs_changed)
@@ -1382,7 +1379,3 @@ class MpdFrontWindow(Gtk.Window, KeyPressedReceiver):
             self.bottompaned.set_position(self.props.default_width/2)
             #self.bottompaned.set_position(self.props.default_width)
         #self.playback_display.set_albumart_size()
-
-    def on_mainpaned_handle_move(self):
-        log = logging.getLogger(__name__+"."+self.__class__.__name__+"."+inspect.stack()[0].function)
-        log.debug("mainpaned handle moved")
