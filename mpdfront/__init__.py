@@ -37,6 +37,7 @@ def main():
     config.read(args.config)
 
     ## load logger config
+    logger_config_loaded = False
     if config.has_option("main", "logger_config"):
         try:
             logger_config = config.get("main", "logger_config")
@@ -44,10 +45,21 @@ def main():
                 with open(logger_config, 'r') as f:
                     log_cfg = yaml.safe_load(f.read())
                 logging.config.dictConfig(log_cfg)
+                logger_config_loaded = True
         except configparser.NoOptionError as e:
             pass
         except Exception as e:
             sys.stderr.write("could not load logger config: %s\n" % e)
+    ## Load default logger configs if no logger config file was loaded
+    if not logger_config_loaded:
+        formatter = logging.Formatter(Constants.default_log_format)
+        handler = logging.StreamHandler(sys.stdout)
+        handler.setFormatter(formatter)
+        log.addHandler(handler)
+    if args.verbose:
+        log.setLevel(logging.DEBUG)
+    else:
+        log.setLevel(logging.INFO)
 
     ## Create App object and run it
     #try:
