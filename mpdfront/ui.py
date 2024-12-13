@@ -517,32 +517,25 @@ class PlaybackDisplay(Gtk.Grid):
         self.set_name("playback-display")
         self.set_halign(Gtk.Align.FILL)
         self.set_valign(Gtk.Align.FILL)
-        self.set_hexpand(False)
+        self.set_hexpand(True)
         self.set_vexpand(True)
 
         ## Current album art
-        self.albumart_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-        self.albumart_box.set_name("albumart-frame")
-        self.albumart_box.set_halign(Gtk.Align.FILL)
-        self.albumart_box.set_valign(Gtk.Align.FILL)
-        self.albumart_box.set_hexpand(False)
-        self.albumart_box.set_vexpand(False)
         self.current_albumart = Gtk.Picture.new()
         self.current_albumart.set_name("albumart")
-        self.current_albumart.props.content_fit = Gtk.ContentFit.CONTAIN
+        self.current_albumart.props.content_fit = Gtk.ContentFit.COVER
         self.current_albumart.set_can_shrink(True)
-        self.current_albumart.set_halign(Gtk.Align.FILL)
-        self.current_albumart.set_valign(Gtk.Align.FILL)
+        self.current_albumart.set_halign(Gtk.Align.BASELINE)
+        self.current_albumart.set_valign(Gtk.Align.BASELINE)
         self.current_albumart.set_hexpand(False)
         self.current_albumart.set_vexpand(False)
-        self.albumart_box.append(self.current_albumart)
 
         ## Box containing playback info labels+text
         self.playback_info_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         self.playback_info_box.set_name("playback-info")
-        self.playback_info_box.set_halign(Gtk.Align.BASELINE)
-        self.playback_info_box.set_valign(Gtk.Align.BASELINE)
-        self.playback_info_box.set_hexpand(False)
+        self.playback_info_box.set_halign(Gtk.Align.FILL)
+        self.playback_info_box.set_valign(Gtk.Align.FILL)
+        self.playback_info_box.set_hexpand(True)
         self.playback_info_box.set_vexpand(True)
 
         # song title label
@@ -622,11 +615,10 @@ class PlaybackDisplay(Gtk.Grid):
         self._create_progressbar()
         self._create_button_box()
 
+        self.attach(self.current_albumart, 1, 1, 1, 1)
         self.attach(self.playback_info_box, 1, 1, 1, 1)
-        #self.attach(self.current_albumart, 2, 1, 1, 1)
-        self.attach(self.albumart_box, 2, 1, 1, 1)
-        self.attach(self.song_progress, 1, 2, 2, 1)
-        self.attach(self.playback_button_box, 1, 3, 2, 1)
+        self.attach(self.song_progress, 1, 2, 1, 1)
+        self.attach(self.playback_button_box, 1, 3, 1, 1)
         self._set_controllers()
 
     def _create_progressbar(self):
@@ -641,17 +633,23 @@ class PlaybackDisplay(Gtk.Grid):
         self.playback_button_box.set_name("button-box")
         self.playback_button_box.set_spacing(Constants.button_box_spacing)
         self.previous_button = Gtk.Button(label=Constants.symbol_previous)
-        self.rewind_button = Gtk.Button(label=Constants.symbol_rewind)
-        self.stop_button = Gtk.Button(label=Constants.symbol_stop)
-        self.play_button = Gtk.Button(label=Constants.symbol_play)
-        self.cue_button = Gtk.Button(label=Constants.symbol_cue)
-        self.next_button = Gtk.Button(label=Constants.symbol_next)
         self.previous_button.set_hexpand(True)
+        self.previous_button.set_vexpand(False)
+        self.rewind_button = Gtk.Button(label=Constants.symbol_rewind)
         self.rewind_button.set_hexpand(True)
+        self.rewind_button.set_vexpand(False)
+        self.stop_button = Gtk.Button(label=Constants.symbol_stop)
         self.stop_button.set_hexpand(True)
+        self.stop_button.set_vexpand(False)
+        self.play_button = Gtk.Button(label=Constants.symbol_play)
         self.play_button.set_hexpand(True)
+        self.play_button.set_vexpand(False)
+        self.cue_button = Gtk.Button(label=Constants.symbol_cue)
         self.cue_button.set_hexpand(True)
+        self.cue_button.set_vexpand(False)
+        self.next_button = Gtk.Button(label=Constants.symbol_next)
         self.next_button.set_hexpand(True)
+        self.next_button.set_vexpand(False)
         self.playback_button_box.append(self.previous_button)
         self.playback_button_box.append(self.rewind_button)
         self.playback_button_box.append(self.stop_button)
@@ -659,6 +657,7 @@ class PlaybackDisplay(Gtk.Grid):
         self.playback_button_box.append(self.cue_button)
         self.playback_button_box.append(self.next_button)
         self.playback_button_box.set_hexpand(True)
+        self.playback_button_box.set_hexpand(False)
 
     def _set_controllers(self):
         # set button event handlers
@@ -888,46 +887,6 @@ class PlaybackDisplay(Gtk.Grid):
                     self.current_albumart.set_paintable(None)
                     self.current_albumart.set_size_request(0,0)
             self.last_audiofile = audiofile
-        #self.current_albumart.set_size_request(-1, -1)
-        #self.set_albumart_size()
-
-    def set_albumart_size(self):
-        log = logging.getLogger(__name__+"."+self.__class__.__name__+"."+inspect.stack()[0].function)
-        mpaned_div_position = self.app.window.mainpaned.get_position()
-        mpaned_width = self.app.window.mainpaned.get_width()
-        mpaned_height = self.app.window.mainpaned.get_height()
-        bottom_div_position = self.app.window.bottompaned.get_position()
-        pbar_height = self.song_progress.get_height()
-        bbox_height = self.playback_button_box.get_height()
-        pbi_width = self.playback_info_box.get_width()
-        pbi_height = self.playback_info_box.get_height()
-        right_width =  mpaned_width - bottom_div_position
-        #log.debug("height considerations: %s, %s, %s, %s" % (mpaned_height, mpaned_div_position, pbar_height, bbox_height))
-
-        req_height = mpaned_height - mpaned_div_position - pbar_height - bbox_height - Constants.pixel_tolerance
-        req_width = mpaned_width - right_width - bottom_div_position/3 - Constants.pixel_tolerance
-        log.debug("req dimensions: %d x %d" % (req_width, req_height))
-
-        aspect_ratio = 1.0
-        if self.current_albumart.get_paintable():
-            img_width = self.current_albumart.get_paintable().get_width()
-            img_height = self.current_albumart.get_paintable().get_height()
-            aspect_ratio = img_width / img_height
-            log.debug("img size: %d x %d, ratio: %f" % (img_width, img_height, aspect_ratio))
-            if req_height < img_height:
-                log.debug("resetting img size")
-                self.albumart_box.set_size_request(-1, -1)
-                return
-        if req_width > req_height:
-            log.debug("seting on req_height: %d x %d" % (req_height*aspect_ratio, req_height))
-            self.albumart_box.set_size_request(-1, req_height)
-        else:
-            #log.debug("seting req_width: %d x %d" % (req_width, req_width/aspect_ratio))
-            #self.albumart_box.set_size_request(req_width, req_width/aspect_ratio)
-            self.albumart_box.set_size_request(-1, -1)
-
-        #log.debug("req w x h: %d x %d" % (req_width, req_height))
-        #self.current_albumart.set_size_request(-1, -1)
 
     ##  Click handlers
 
@@ -1399,7 +1358,7 @@ class MpdFrontWindow(Gtk.Window, KeyPressedReceiver):
         log.debug("state flags: %s" % flags)
         if hasattr(self, '_initial_resized'):
             if not self._initial_resized and (flags & Gtk.StateFlags.FOCUS_WITHIN):
-                self.set_dividers()
+                #self.set_dividers()
                 self._initial_resized = True
         else:
             self._initial_resized = False
@@ -1409,14 +1368,9 @@ class MpdFrontWindow(Gtk.Window, KeyPressedReceiver):
         log.debug("setting dividers")
         if self.mainpaned.get_height():
             self.mainpaned.set_position(self.mainpaned.get_height()/2)
-            #self.mainpaned.set_position(0)
         else:
             self.mainpaned.set_position(self.props.default_height/2)
-            #self.mainpaned.set_position(0)
         if self.bottompaned.get_width():
             self.bottompaned.set_position(self.bottompaned.get_width()/2)
-            #self.bottompaned.set_position(self.bottompaned.get_width())
         else:
             self.bottompaned.set_position(self.props.default_width/2)
-            #self.bottompaned.set_position(self.props.default_width)
-        #self.playback_display.set_albumart_size()
