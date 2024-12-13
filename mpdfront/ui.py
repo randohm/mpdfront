@@ -22,6 +22,43 @@ def pp_time(secs):
     return "%d:%02d" % (int(int(secs) / 60), int(secs) % 60)
 
 class KeyPressedReceiver(Gtk.Widget):
+    """
+    Allows implementing classes to accept key-pressed events and define the response callbacks.
+    Implementing steps:
+        1. set_key_pressed_controller() will create, connect and add a Gtk.EventControllerKey
+        2. Define properties as needed: key_pressed_callbacks, key_pressed_callbacks_mod_meta,
+           key_pressed_callbacks_mod_ctrl, key_pressed_callbacks_mod_alt.
+        3. add_config_keys() load configs defined by a configparser object
+
+    Structure of key_pressed_callbacks* dicts:
+        key: key value from a 'key-pressed' signal
+        value: tuple with elements 0:callback function, 1:tuple of args passed to the callback
+
+    Example:
+        self.key_pressed_callbacks = {
+            Gdk.KEY_VoidSymbol:         (lambda: True,), ## do do nothing on this keyval
+            Gdk.KEY_Up:                 (log.debug, ("UP",)),
+            Gdk.KEY_Down:               (log.debug, ("DOWN",)),
+            Gdk.KEY_Right:              (log.debug, ("RIGHT",)),
+            Gdk.KEY_Left:               (log.debug, ("LEFT",)),
+            Gdk.KEY_Return:             (log.debug, ("RETURN",)),
+            Gdk.KEY_Escape:             (log.debug, ("ESC",)),
+        }
+        ## load from predefined configparser object
+        from_config = {
+            ("Section Name", "action_1"):   (self.respond_to_action_1,),
+            ("Section Name", "action_2"):   (self.respond_to_action_2,),
+            ("Section Name", "quit"):       (self.close,),
+        }
+        self.add_config_keys(self.key_pressed_callbacks, from_config, config)
+
+    Config section for the above:
+        [Section Name]
+        action_1=a
+        action_2=b
+        quit=q
+    Only supports 1 modifier key at a time.
+    """
     @property
     def key_pressed_callbacks(self):
         if not hasattr(self, '_key_pressed_callbacks'):
