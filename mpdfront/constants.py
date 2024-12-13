@@ -2,13 +2,13 @@ import os
 
 class Constants:
     application_id = "com.github.randohm.mpdfront"
-
+    window_title = "MPD Front"
     default_host = "localhost"
     default_port = 6600
     default_width = 1920
     default_height = 1080
     default_config_file = os.environ['HOME'] + "/.config/mpdfront/mpdfront.cfg"
-    log_format = "%(asctime)s %(levelname)s %(threadName)s %(module)s::%(funcName)s(%(lineno)d): %(message)s"
+    default_log_format = "%(asctime)s %(levelname)s %(threadName)s %(module)s::%(funcName)s(%(lineno)d): %(message)s"
     browser_num_columnns = 4
 
     rewind_arg = "-5"
@@ -67,6 +67,8 @@ class Constants:
     config_section_keys = "keys"
 
     divider_tolerance = 5       ## tolerance in pixels for how close the paned divider is to the edge
+    pixel_tolerance = 12        ## tolerance in pixels for general geometry calculations
+    button_box_spacing = 5
 
     playlist_confirm_reponse_cancel = 0
     playlist_confirm_reponse_add = 1
@@ -77,3 +79,5 @@ class Constants:
     playlist_edit_response_up = 2
     playlist_edit_response_down = 3
     playlist_edit_response_delete = 4
+
+    progressbar_height = 20
