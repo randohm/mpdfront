@@ -480,26 +480,29 @@ class PlaybackDisplay(Gtk.Grid):
         self.set_name("playback-display")
         self.set_halign(Gtk.Align.FILL)
         self.set_valign(Gtk.Align.FILL)
-        self.set_hexpand(True)
+        self.set_hexpand(False)
         self.set_vexpand(True)
 
         ## Current album art
         self.albumart_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-        self.albumart_box.set_halign(Gtk.Align.END)
-        self.albumart_box.set_valign(Gtk.Align.START)
+        self.albumart_box.set_name("albumart-frame")
+        self.albumart_box.set_halign(Gtk.Align.FILL)
+        self.albumart_box.set_valign(Gtk.Align.FILL)
         self.albumart_box.set_hexpand(False)
         self.albumart_box.set_vexpand(False)
         self.current_albumart = Gtk.Picture.new()
+        self.current_albumart.set_name("albumart")
         self.current_albumart.props.content_fit = Gtk.ContentFit.CONTAIN
         self.current_albumart.set_can_shrink(True)
         self.current_albumart.set_halign(Gtk.Align.FILL)
-        self.current_albumart.set_valign(Gtk.Align.START)
-        self.current_albumart.set_hexpand(True)
-        self.current_albumart.set_vexpand(True)
+        self.current_albumart.set_valign(Gtk.Align.FILL)
+        self.current_albumart.set_hexpand(False)
+        self.current_albumart.set_vexpand(False)
         self.albumart_box.append(self.current_albumart)
 
         ## Box containing playback info labels+text
         self.playback_info_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        self.playback_info_box.set_name("playback-info")
         self.playback_info_box.set_halign(Gtk.Align.BASELINE)
         self.playback_info_box.set_valign(Gtk.Align.BASELINE)
         self.playback_info_box.set_hexpand(False)
@@ -511,8 +514,8 @@ class PlaybackDisplay(Gtk.Grid):
         self.current_title_label.set_ellipsize(Pango.EllipsizeMode.END)
         self.current_title_label.set_halign(Gtk.Align.START)
         self.current_title_label.set_valign(Gtk.Align.START)
-        self.current_title_label.set_wrap(True)
-        self.current_title_label.set_hexpand(True)
+        self.current_title_label.set_wrap(False)
+        self.current_title_label.set_hexpand(False)
         self.current_title_label.set_vexpand(False)
         self.current_title_label.set_justify(Gtk.Justification.LEFT)
 
@@ -522,8 +525,8 @@ class PlaybackDisplay(Gtk.Grid):
         self.current_artist_label.set_ellipsize(Pango.EllipsizeMode.END)
         self.current_artist_label.set_halign(Gtk.Align.START)
         self.current_artist_label.set_valign(Gtk.Align.START)
-        self.current_artist_label.set_wrap(True)
-        self.current_artist_label.set_hexpand(True)
+        self.current_artist_label.set_wrap(False)
+        self.current_artist_label.set_hexpand(False)
         self.current_artist_label.set_vexpand(False)
         self.current_artist_label.set_justify(Gtk.Justification.LEFT)
 
@@ -533,8 +536,8 @@ class PlaybackDisplay(Gtk.Grid):
         self.current_album_label.set_ellipsize(Pango.EllipsizeMode.END)
         self.current_album_label.set_halign(Gtk.Align.START)
         self.current_album_label.set_valign(Gtk.Align.START)
-        self.current_album_label.set_wrap(True)
-        self.current_album_label.set_hexpand(True)
+        self.current_album_label.set_wrap(False)
+        self.current_album_label.set_hexpand(False)
         self.current_album_label.set_vexpand(True)
         self.current_album_label.set_justify(Gtk.Justification.LEFT)
 
@@ -545,7 +548,7 @@ class PlaybackDisplay(Gtk.Grid):
         self.current_time_label.set_halign(Gtk.Align.START)
         self.current_time_label.set_valign(Gtk.Align.END)
         self.current_time_label.set_wrap(False)
-        self.current_time_label.set_hexpand(True)
+        self.current_time_label.set_hexpand(False)
         self.current_time_label.set_vexpand(False)
         self.current_time_label.set_justify(Gtk.Justification.LEFT)
 
@@ -555,8 +558,8 @@ class PlaybackDisplay(Gtk.Grid):
         self.stats1_label.set_ellipsize(Pango.EllipsizeMode.END)
         self.stats1_label.set_halign(Gtk.Align.START)
         self.stats1_label.set_valign(Gtk.Align.END)
-        self.stats1_label.set_wrap(True)
-        self.stats1_label.set_hexpand(True)
+        self.stats1_label.set_wrap(False)
+        self.stats1_label.set_hexpand(False)
         self.stats1_label.set_vexpand(False)
         self.stats1_label.set_justify(Gtk.Justification.LEFT)
 
@@ -566,8 +569,8 @@ class PlaybackDisplay(Gtk.Grid):
         self.stats2_label.set_ellipsize(Pango.EllipsizeMode.END)
         self.stats2_label.set_halign(Gtk.Align.START)
         self.stats2_label.set_valign(Gtk.Align.END)
-        self.stats2_label.set_wrap(True)
-        self.stats2_label.set_hexpand(True)
+        self.stats2_label.set_wrap(False)
+        self.stats2_label.set_hexpand(False)
         self.stats2_label.set_vexpand(False)
         self.stats2_label.set_justify(Gtk.Justification.LEFT)
 
@@ -849,7 +852,7 @@ class PlaybackDisplay(Gtk.Grid):
                     self.current_albumart.set_size_request(0,0)
             self.last_audiofile = audiofile
         #self.current_albumart.set_size_request(-1, -1)
-        self.set_albumart_size()
+        #self.set_albumart_size()
 
     def set_albumart_size(self):
         log = logging.getLogger(__name__+"."+self.__class__.__name__+"."+inspect.stack()[0].function)
@@ -880,10 +883,11 @@ class PlaybackDisplay(Gtk.Grid):
                 return
         if req_width > req_height:
             log.debug("seting on req_height: %d x %d" % (req_height*aspect_ratio, req_height))
-            self.albumart_box.set_size_request(req_height*aspect_ratio, req_height)
+            self.albumart_box.set_size_request(-1, req_height)
         else:
-            log.debug("seting req_width: %d x %d" % (req_width, req_width/aspect_ratio))
-            self.albumart_box.set_size_request(req_width, req_width/aspect_ratio)
+            #log.debug("seting req_width: %d x %d" % (req_width, req_width/aspect_ratio))
+            #self.albumart_box.set_size_request(req_width, req_width/aspect_ratio)
+            self.albumart_box.set_size_request(-1, -1)
 
         #log.debug("req w x h: %d x %d" % (req_width, req_height))
         #self.current_albumart.set_size_request(-1, -1)
