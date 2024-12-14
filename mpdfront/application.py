@@ -13,7 +13,16 @@ from gi.repository import Gtk, Gdk, GdkPixbuf, GObject, Pango, GLib, Gio
 
 log = logging.getLogger(__name__)
 
-def node_sort_filtered(row1, row2):
+def node_sort_normal(row1:data.ContentTreeNode, row2:data.ContentTreeNode):
+    """
+    Alphanumeric compare function for Gio.ListStore sorting.
+    :param row1: left row
+    :param row2: right now
+    :return: value of comparison expression
+    """
+    return row1.metaname > row2.metaname
+
+def node_sort_filtered(row1:data.ContentTreeNode, row2:data.ContentTreeNode):
     """
     Compare function for Gio.ListStore sorting. Modifies the text before comparison.
     Removes from text: /^The /
@@ -21,11 +30,11 @@ def node_sort_filtered(row1, row2):
     :param row2: right now
     :return: value of comparison expression
     """
-    row1_value = re.sub(r'^The ', '', row1.get_metaname(), flags=re.IGNORECASE)
-    row2_value = re.sub(r'^The ', '', row2.get_metaname(), flags=re.IGNORECASE)
+    row1_value = re.sub(r'^The ', '', row1.metaname, flags=re.IGNORECASE)
+    row2_value = re.sub(r'^The ', '', row2.metaname, flags=re.IGNORECASE)
     return row1_value > row2_value
 
-def node_sort_by_track(row1, row2):
+def node_sort_by_track(row1:data.ContentTreeNode, row2:data.ContentTreeNode):
     """
     Compare function for Gio.ListStore sorting. Sort according to disc and track numbers
     :param row1: left row
@@ -47,7 +56,7 @@ def node_sort_by_track(row1, row2):
         #log.debug("comparing values: %d > %d" % (row1_value, row2_value))
         return row1_value > row2_value
     except Exception as e:
-        log.debug("sort compare failed: %s" % (e))
+        log.debug("sort compare failed: %s" % e)
         return 0
 
 class MpdFrontApp(Gtk.Application):
@@ -234,209 +243,98 @@ class MpdFrontApp(Gtk.Application):
                     self.window.playback_display.update(msg.get_data()['status'], msg.get_data()['current'], self.music_dir)
         return True
 
-    ## BEGIN content tree data loaders
     def load_content_data(self, node):
         log = logging.getLogger(__name__+"."+self.__class__.__name__+"."+inspect.stack()[0].function)
         log.debug("load data for node, metadata: %s" % node.get_metadata())
         if node.get_child_layer().get_n_items(): # if data has already been loaded, skip
-            log.debug("node child data already loaded, type: %s, name: %s" % (node.get_metatype(), node.get_metaname()))
+            log.debug("node child data already loaded, type: %s, name: %s" % (node.metatype, node.metaname))
             return
-        if node.get_metatype() == Constants.node_t_category:
-            if node.get_metadata('next_type') == Constants.node_t_albumartist:
-                log.debug("loading albumartists")
-                self.load_albumartists(node)
-            elif node.get_metadata('next_type') == Constants.node_t_artist:
-                log.debug("loading artists")
-                self.load_artists(node)
-            elif node.get_metadata('next_type') == Constants.node_t_album:
-                log.debug("loading albums")
-                self.load_albums(node)
-            elif node.get_metadata('next_type') == Constants.node_t_genre:
-                log.debug("loading genres")
-                self.load_genres(node)
-            elif node.get_metadata('next_type') in (Constants.node_t_file, Constants.node_t_dir):
-                log.debug("loading directories")
-                self.load_first_directory_level(node)
-            else:
-                log.error("unknown node next type: %s" % (node.get_metadata('next_type')))
-        elif node.get_metatype() == Constants.node_t_albumartist:
+        if node.metatype == Constants.node_t_category:
+            self.load_category_content(node)
+        elif node.metatype == Constants.node_t_albumartist:
             log.debug("loading albums by albumartist")
-            self.load_albums_by_albumartist(node)
-        elif node.get_metatype() == Constants.node_t_artist:
+            self.load_items_list(node, Constants.node_t_song, False, "album", "albumartist", node.metaname)
+        elif node.metatype == Constants.node_t_artist:
             log.debug("loading albums by artist")
-            self.load_albums_by_artist(node)
-        elif node.get_metatype() == Constants.node_t_genre:
+            self.load_items_list(node, Constants.node_t_song, False, "album", "artist", node.metaname)
+        elif node.metatype == Constants.node_t_genre:
             log.debug("loading albums by genre")
-            self.load_albums_by_genre(node)
-        elif node.get_metatype() == Constants.node_t_dir:
-            #if node.get_metadata('previous_type') == Constants.node_t_category:
-            #    log.debug("loading 2nd level files")
+            self.load_items_list(node, Constants.node_t_song, False, "album", "genre", node.metaname)
+        elif node.metatype == Constants.node_t_dir:
             self.load_directories(node)
-            #elif node.get_metadata('previous_type') == Constants.node_t_dir:
-            #    self.load_third_file_level(node)
-            #else:
-            #    log.debug("previous type: %s" % node.get_metadata('previous_type'))
-        elif node.get_metatype() == Constants.node_t_album:
-            log.debug("loading song by albums by: %s" % node.get_metadata('previous_type'))
-            if node.get_metadata('previous_type') == Constants.node_t_albumartist:
-                self.load_songs_by_album_by_albumartist(node, node.get_metadata('previous'))
-            elif node.get_metadata('previous_type') == Constants.node_t_artist:
-                self.load_songs_by_album_by_artist(node, node.get_metadata('previous'))
-            elif node.get_metadata('previous_type') == Constants.node_t_category:
-                self.load_songs_by_album(node)
-            elif node.get_metadata('previous_type') == Constants.node_t_genre:
-                self.load_songs_by_album_by_genre(node, node.get_metadata('previous'))
-        elif node.get_metatype() == Constants.node_t_song:
-            log.debug("nothing to do for a song: %s" % node.get_metaname())
+        elif node.metatype == Constants.node_t_album:
+            self.load_album_content(node)
+        elif node.metatype == Constants.node_t_song:
+            log.debug("nothing to do for a song: %s" % node.metaname)
         else:
-            log.debug("unhandled metatype: %s" % node.get_metatype())
+            log.debug("unhandled metatype: %s" % node.metatype)
 
-    ## by albumartist
-    def load_albumartists(self, node:data.ContentTreeNode):
-        try:
-            recv = self.mpd_client.list("albumartist")
-            if not recv:
-                log.error("no data feteched for albumartist" )
-                return
-            for r in recv:
-                if r:
-                    new_node = data.ContentTreeNode(metadata={'name': r, 'type': Constants.node_t_albumartist,
-                                                'previous': node, 'previous_type': node.get_metatype(),
-                                                'next_type': Constants.node_t_album})
-                    node.get_child_layer().append(new_node)
+    def load_category_content(self, node:data.ContentTreeNode):
+        log = logging.getLogger(__name__+"."+self.__class__.__name__+"."+inspect.stack()[0].function)
+        if node.next_type == Constants.node_t_albumartist:
+            log.debug("loading albumartists")
+            self.load_items_list(node, Constants.node_t_album, False,"albumartist")
             node.get_child_layer().sort(node_sort_filtered)
-        except Exception as e:
-            log.error("could not load albumartists (%s): %s" % (type(e).__name__, e))
-
-    def load_albums_by_albumartist(self, albumartist:data.ContentTreeNode):
-        try:
-            recv = self.mpd_list("album", "albumartist", albumartist.get_metaname())
-            log.debug("albums by albumartist '%s': %s" % (albumartist.get_metaname(), recv))
-            for r in recv:
-                if r:
-                    new_node = data.ContentTreeNode(metadata={'name': r,'type': Constants.node_t_album,
-                                                'previous': albumartist, 'previous_type': albumartist.get_metatype(),
-                                                'next_type': Constants.node_t_song})
-                    albumartist.get_child_layer().append(new_node)
-        except Exception as e:
-            log.error("could not load albums by albumartist '%s': %s" % (albumartist.get_metaname(), e))
-
-    def load_songs_by_album_by_albumartist(self, album:data.ContentTreeNode, albumartist:data.ContentTreeNode):
-        try:
-            recv = self.mpd_find("albumartist", albumartist.get_metaname(), "album", album.get_metaname())
-            for r in recv:
-                if r:
-                    album.get_child_layer().append(self.create_song_node(r))
-            album.get_child_layer().sort(node_sort_by_track)
-        except Exception as e:
-            log.error("could not load songs by albums by albumartist '%s', '%s': %s" %
-                      (albumartist.get_metaname(), album.get_metaname(), e))
-
-    ## by artist
-    def load_artists(self, node:data.ContentTreeNode):
-        try:
-            recv = self.mpd_client.list("artist")
-            if not recv:
-                log.error("no data fetched for artist" )
-                return
-            for r in recv:
-                if r:
-                    new_node = data.ContentTreeNode(metadata={'name': r, 'type': Constants.node_t_artist,
-                                                'previous': node, 'previous_type': Constants.node_t_category,
-                                                'next_type': Constants.node_t_album})
-                    node.get_child_layer().append(new_node)
+        elif node.next_type == Constants.node_t_artist:
+            log.debug("loading artists")
+            self.load_items_list(node, Constants.node_t_album, False, "artist")
             node.get_child_layer().sort(node_sort_filtered)
-        except Exception as e:
-            log.error("could not load artists (%s): %s" % (type(e).__name__, e))
+        elif node.next_type == Constants.node_t_album:
+            log.debug("loading albums")
+            self.load_items_list(node, Constants.node_t_song, False, "album")
+        elif node.next_type == Constants.node_t_genre:
+            log.debug("loading genres")
+            self.load_items_list(node, Constants.node_t_album, True, "genre")
+        elif node.next_type in (Constants.node_t_file, Constants.node_t_dir):
+            log.debug("loading directories")
+            self.load_first_directory_level(node)
+        else:
+            log.error("unknown node next type: %s" % (node.next_type))
 
-    def load_albums_by_artist(self, artist:data.ContentTreeNode):
-        try:
-            recv = self.mpd_list("album", "artist", artist.get_metaname())
-            #log.debug("albums by artist '%s': %s" % (artist.get_metaname(), recv))
-            for r in recv:
-                if r:
-                    new_node = data.ContentTreeNode(metadata={'name': r, 'type': Constants.node_t_album,
-                                                'previous': artist, 'previous_type': Constants.node_t_artist,
-                                                'next_type': Constants.node_t_song})
-                    artist.get_child_layer().append(new_node)
-        except Exception as e:
-            log.error("could not load albums by artist '%s': %s" % (artist.get_metaname(), e))
+    def load_album_content(self, node:data.ContentTreeNode):
+        log = logging.getLogger(__name__+"."+self.__class__.__name__+"."+inspect.stack()[0].function)
+        log.debug("loading song by albums by: %s" % node.previous.metatype)
+        if node.previous.metatype == Constants.node_t_albumartist:
+            self.load_songs(node, "albumartist", node.previous.metaname, "album", node.metaname)
+        elif node.previous.metatype == Constants.node_t_artist:
+            self.load_songs(node, "artist", node.previous.metaname, "album", node.metaname)
+        elif node.previous.metatype == Constants.node_t_category:
+            self.load_songs(node, "album", node.metaname)
+        elif node.previous.metatype == Constants.node_t_genre:
+            self.load_songs(node, "genre", node.previous.metaname, "album", node.metaname)
+        node.get_child_layer().sort(node_sort_by_track)
 
-    def load_songs_by_album_by_artist(self, album:data.ContentTreeNode, artist:data.ContentTreeNode):
+    def load_items_list(self, node:data.ContentTreeNode, next_type:str, load_empty_string:bool=False, *args, **kwargs):
+        log = logging.getLogger(__name__+"."+self.__class__.__name__+"."+inspect.stack()[0].function)
         try:
-            recv = self.mpd_find("artist", artist.get_metaname(), "album", album.get_metaname())
-            #log.debug("songs by album by artist '%s' '%s': %s" % (album.get_metaname(), artist.get_metaname(), recv))
-            for r in recv:
-                if r:
-                    album.get_child_layer().append(self.create_song_node(r))
-        except Exception as e:
-            log.error("could not load songs by album by artist '%s', '%s': %s" %
-                      (artist.get_metaname(), album.get_metaname(), e))
-
-    # by albums
-    def load_albums(self, node:data.ContentTreeNode):
-        try:
-            recv = self.mpd_client.list("album")
+            log.debug("loading item: %s" % node.get_metadata())
+            recv = self.mpd_list(*args, **kwargs)
             if not recv:
-                log.error("no data feteched for album" )
+                log.error("no data feteched for node: %s" % node.metaname)
                 return
+            log.debug("items: %s" % recv)
             for r in recv:
-                if r:
-                    new_node = data.ContentTreeNode(metadata={'name': r, 'type': Constants.node_t_album,
-                                                'previous': node, 'previous_type': Constants.node_t_category,
-                                                'next_type': Constants.node_t_song})
+                if r or (load_empty_string and r == ""):
+                    new_node = data.ContentTreeNode(metadata={'name': r, 'type': node.next_type, 'next_type': next_type}, previous=node)
                     node.get_child_layer().append(new_node)
         except Exception as e:
-            log.error("could not load albums (%s): %s" % (type(e).__name__, e))
+            log.error("could not load item (%s): %s" % (type(e).__name__, e))
 
-    def load_songs_by_album(self, album:data.ContentTreeNode):
+    def load_songs(self, node:data.ContentTreeNode, *args, **kwargs):
+        log = logging.getLogger(__name__+"."+self.__class__.__name__+"."+inspect.stack()[0].function)
         try:
-            recv = self.mpd_find("album", album.get_metaname())
-            #log.debug("songs by album '%s': %s" % (album.get_metaname(), recv))
-            for r in recv:
-                album.get_child_layer().append(self.create_song_node(r))
-        except Exception as e:
-            log.error("could not load songs by album '%s': %s" % (album.get_metaname(), e))
-
-    ## by genres
-    def load_genres(self, node:data.ContentTreeNode):
-        try:
-            recv = self.mpd_client.list("genre")
+            recv = self.mpd_find(*args, **kwargs)
             if not recv:
-                log.error("no data feteched for genre" )
+                log.error("no songs for: %s" % node.metaname)
                 return
-            for r in recv:
-                if r != None:
-                    new_node= data.ContentTreeNode(metadata={'name': r, 'type': Constants.node_t_genre,
-                                                'previous': node, 'next_type': Constants.node_t_album})
-                    node.get_child_layer().append(new_node)
-        except Exception as e:
-            log.error("could not load genres (%s): %s" % (type(e).__name__, e))
-
-    def load_albums_by_genre(self, genre:data.ContentTreeNode):
-        try:
-            recv = self.mpd_list("album", "genre", genre.get_metaname())
-            #log.debug("albums by genre '%s': %s" % (genre.get_metaname(), recv))
+            log.debug("songs from '%s': %s" % (node.metaname, recv))
             for r in recv:
                 if r:
-                    genre.get_child_layer().append(data.ContentTreeNode(metadata={'name': r,
-                                                'type': Constants.node_t_album, 'previous': genre,
-                                                'previous_type': Constants.node_t_genre, 'next_type': Constants.node_t_song}))
+                    node.get_child_layer().append(self.create_song_node(metadata=r, previous=node))
+            node.get_child_layer().sort(node_sort_by_track)
         except Exception as e:
-            log.error("could not load albums by genre '%s': %s" % (genre.get_metaname(), e))
+            log.error("could not load songs by albums by albumartist '%s', '%s': %s" % (node.previous.metaname, node.metaname, e))
 
-    def load_songs_by_album_by_genre(self, album:data.ContentTreeNode, genre:data.ContentTreeNode):
-        try:
-            recv = self.mpd_find("genre", genre.get_metaname(), "album", album.get_metaname())
-            #log.debug("songs by album by genre '%s' '%s': %s" % (album.get_metaname(), genre.get_metaname(), recv))
-            for r in recv:
-                if r:
-                    album.get_child_layer().append(self.create_song_node(r))
-        except Exception as e:
-            log.error("could not load songs by album by genre '%s', '%s': %s" %
-                      (genre.get_metaname(), album.get_metaname(), e))
-
-    # by files
     def load_first_directory_level(self, node:data.ContentTreeNode):
         log = logging.getLogger(__name__+"."+self.__class__.__name__+"."+inspect.stack()[0].function)
         log.debug("directory node metadata: %s" % node.get_metadata())
@@ -474,18 +372,16 @@ class MpdFrontApp(Gtk.Application):
         except Exception as e:
             log.error("could not load 2nd level (%s): %s" % (type(e).__name__, e))
 
-    ## END content tree data loaders
-
-    def create_song_node(self, song:dict):
+    def create_song_node(self, metadata:dict, previous:data.ContentTreeNode):
         log = logging.getLogger(__name__+"."+self.__class__.__name__+"."+inspect.stack()[0].function)
-        log.debug("create song node: %s" % song)
-        song['type'] = Constants.node_t_song
-        if 'title' in song and 'track' in song:
-            song['name'] = "%s %s" % (song['track'], song['title'])
+        log.debug("create song node: %s" % metadata)
+        metadata['type'] = Constants.node_t_song
+        if 'title' in metadata and 'track' in metadata:
+            metadata['name'] = "%s %s" % (metadata['track'], metadata['title'])
         else:
-            song['name'] = os.path.basename(song['file'])
-        new_node = data.ContentTreeNode(metadata=song)
-        log.debug("new node: %s" % new_node.get_metaname())
+            metadata['name'] = os.path.basename(metadata['file'])
+        new_node = data.ContentTreeNode(metadata=metadata, previous=previous)
+        log.debug("new node: %s" % new_node.metaname)
         return new_node
 
     def check_threads(self):
