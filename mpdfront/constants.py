@@ -36,7 +36,7 @@ class Constants:
     node_t_artist = "artist"
     node_t_album = "album"
     node_t_genre = "genre"
-    node_t_dir = "directory"
+    node_t_directory = "directory"
     node_t_file = "file"
     node_t_song = "song"
 
@@ -46,7 +46,7 @@ class Constants:
         {'type': node_t_category, 'name': topnode_name_artists, 'next_type': node_t_artist},
         {'type': node_t_category, 'name': topnode_name_albums, 'next_type': node_t_album},
         {'type': node_t_category, 'name': topnode_name_genres, 'next_type': node_t_genre},
-        {'type': node_t_category, 'name': topnode_name_files, 'next_type': node_t_dir},
+        {'type': node_t_category, 'name': topnode_name_files, 'next_type': node_t_directory},
     ]
 
     proc_file_fmt = "/proc/asound/card%s/pcm%sp/sub%s/hw_params"  ## proc file with DAC information

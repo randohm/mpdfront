@@ -209,20 +209,23 @@ class MpdFrontApp(Gtk.Application):
         return True
 
     def get_files_list(self, path=""):
+        log = logging.getLogger(__name__+"."+self.__class__.__name__+"."+inspect.stack()[0].function)
         files = self.mpd_client.lsinfo(path)
-        #log.debug("received files: %s" % files)
+        log.debug("received files: %s" % files)
         rows = []
         for f in files:
             if 'directory' in f:
                 dirname = os.path.basename(f['directory'])
-                rows.append(
-                    {'type': 'directory', 'name': dirname, 'data': {'name': dirname, 'dir': f['directory']}})
+                rows.append({'type': Constants.node_t_directory, 'name': dirname, 'path': f['directory']})
             elif 'file' in f:
                 filename = os.path.basename(f['file'])
                 finfo = self.mpd_client.lsinfo(f['file'])[0]
                 if not finfo:
                     finfo = {'file': f['file']}
-                rows.append({'type': 'file', 'name': filename, 'data': finfo})
+                finfo.update({'type': Constants.node_t_file, 'name': filename})
+                rows.append(finfo)
+            else:
+                log.error("unhandled type: %s" % f)
         return rows
 
     def idle_thread_comms_handler(self):
@@ -260,7 +263,7 @@ class MpdFrontApp(Gtk.Application):
         elif node.metatype == Constants.node_t_genre:
             log.debug("loading albums by genre")
             self.load_items_list(node, Constants.node_t_song, False, "album", "genre", node.metaname)
-        elif node.metatype == Constants.node_t_dir:
+        elif node.metatype == Constants.node_t_directory:
             self.load_directories(node)
         elif node.metatype == Constants.node_t_album:
             self.load_album_content(node)
@@ -285,7 +288,7 @@ class MpdFrontApp(Gtk.Application):
         elif node.next_type == Constants.node_t_genre:
             log.debug("loading genres")
             self.load_items_list(node, Constants.node_t_album, True, "genre")
-        elif node.next_type in (Constants.node_t_file, Constants.node_t_dir):
+        elif node.next_type in (Constants.node_t_file, Constants.node_t_directory):
             log.debug("loading directories")
             self.load_first_directory_level(node)
         else:
@@ -340,35 +343,33 @@ class MpdFrontApp(Gtk.Application):
         log.debug("directory node metadata: %s" % node.get_metadata())
         try:
             path = ""
-            if node.get_metadata('data') and 'dir' in node.get_metadata('data'):
-                path = node.get_metadata('data')['dir']
+            if 'path' in node.get_metadata():
+                path = node.get_metadata('path')
             files = self.get_files_list(path)
             log.debug("files: %s" % files)
             if not files or not isinstance(files, list):
                 log.error("could not get files successfully: %s" % files)
                 return
-            for f in files:
-                #log.debug("adding file: %s" % f)
-                subf = self.get_files_list(f['data']['dir'])
+            for f1 in files:
+                log.debug("1st level file: %s" % f1)
+                subf = self.get_files_list(f1['path'])
                 for f2 in subf:
-                    metadata = {'type': f2['type'], 'name': f['name'] + "/" + f2['name'], 'data': f2['data'],
-                                'previous_type': Constants.node_t_category}
-                    #log.debug("adding metadata: %s" % metadata)
-                    new_node = data.ContentTreeNode(metadata=metadata)
+                    log.debug("2nd level file: %s" % f2)
+                    metadata = {'type': f2['type'], 'name': f1['name'] + "/" + f2['name'], 'path': f2['path']}
+                    log.debug("adding metadata: %s" % metadata)
+                    new_node = data.ContentTreeNode(metadata=metadata, previous=node)
                     node.get_child_layer().append(new_node)
         except Exception as e:
             log.error("could not load 1st level (%s): %s" % (type(e).__name__, e))
 
-    def load_directories(self, dir:data.ContentTreeNode):
+    def load_directories(self, node:data.ContentTreeNode):
         log = logging.getLogger(__name__+"."+self.__class__.__name__+"."+inspect.stack()[0].function)
         try:
-            log.debug("dir metadata: %s" % dir.get_metadata())
-            files = self.get_files_list(dir.get_metadata('data')['dir'])
+            log.debug("dir metadata: %s" % node.get_metadata())
+            files = self.get_files_list(node.get_metadata('path'))
             log.debug("received files: %s" % files)
             for f in files:
-                f['previous'] = dir
-                f['previous_type'] = Constants.node_t_dir
-                dir.get_child_layer().append(data.ContentTreeNode(metadata=f))
+                node.get_child_layer().append(data.ContentTreeNode(metadata=f, previous=node))
         except Exception as e:
             log.error("could not load 2nd level (%s): %s" % (type(e).__name__, e))
 
@@ -401,3 +402,31 @@ class MpdFrontApp(Gtk.Application):
         else:
             log.debug("idle thread is alive")
         return True
+
+    def add_to_playlist(self, node:data.ContentTreeNode):
+        log = logging.getLogger(__name__+"."+self.__class__.__name__+"."+inspect.stack()[0].function)
+        log.debug("adding to playlist: %s" % node.get_metadata())
+        if node.metatype == Constants.node_t_song:
+            self.mpd_add(node.get_metadata('file'))
+        elif node.metatype == Constants.node_t_file:
+            self.mpd_add(node.get_metadata('file'))
+        elif node.metatype == Constants.node_t_album:
+            log.debug("adding album: %s" % node.metaname)
+            if node.previous.metatype == Constants.node_t_artist:
+                log.debug("adding album by artist: %s" % node.previous.metaname)
+                self.mpd_findadd("artist", node.previous.metatype, "album", node.metaname)
+            elif node.previous.metatype == Constants.node_t_albumartist:
+                log.debug("adding album by albumartist: %s" % node.previous.metaname)
+                self.mpd_findadd("albumartist", node.previous.metaname, "album", node.metaname)
+            elif node.previous.metatype == Constants.node_t_genre:
+                log.debug("adding album by genre: %s" % node.previous.metaname)
+                self.mpd_findadd("genre", node.previous.metaname, "album", node.metaname)
+            elif node.previous.metatype == Constants.node_t_category:
+                log.debug("adding album from toplevel: %s" % node.previous.metaname)
+                self.mpd_findadd("album", node.metaname)
+            else:
+                log.error("unhandled type 2: %s" % node.previous.metatype)
+        elif node.metatype == Constants.node_t_directory:
+            log.debug("not adding dir: %s" % node.get_metadata())
+        else:
+            log.error("unhandled type 1: %s" % node.metatype)

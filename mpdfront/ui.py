@@ -1,5 +1,5 @@
 import configparser
-import re, os, html, io, inspect
+import re, os, html, inspect
 import logging
 import mutagen
 from mutagen.flac import FLAC
@@ -22,43 +22,6 @@ def pp_time(secs):
     return "%d:%02d" % (int(int(secs) / 60), int(secs) % 60)
 
 class KeyPressedReceiver(Gtk.Widget):
-    """
-    Allows implementing classes to accept key-pressed events and define the response callbacks.
-    Implementing steps:
-        1. set_key_pressed_controller() will create, connect and add a Gtk.EventControllerKey
-        2. Define properties as needed: key_pressed_callbacks, key_pressed_callbacks_mod_meta,
-           key_pressed_callbacks_mod_ctrl, key_pressed_callbacks_mod_alt.
-        3. add_config_keys() load configs defined by a configparser object
-
-    Structure of key_pressed_callbacks* dicts:
-        key: key value from a 'key-pressed' signal
-        value: tuple with elements 0:callback function, 1:tuple of args passed to the callback
-
-    Example:
-        self.key_pressed_callbacks = {
-            Gdk.KEY_VoidSymbol:         (lambda: True,), ## do do nothing on this keyval
-            Gdk.KEY_Up:                 (log.debug, ("UP",)),
-            Gdk.KEY_Down:               (log.debug, ("DOWN",)),
-            Gdk.KEY_Right:              (log.debug, ("RIGHT",)),
-            Gdk.KEY_Left:               (log.debug, ("LEFT",)),
-            Gdk.KEY_Return:             (log.debug, ("RETURN",)),
-            Gdk.KEY_Escape:             (log.debug, ("ESC",)),
-        }
-        ## load from predefined configparser object
-        from_config = {
-            ("Section Name", "action_1"):   (self.respond_to_action_1,),
-            ("Section Name", "action_2"):   (self.respond_to_action_2,),
-            ("Section Name", "quit"):       (self.close,),
-        }
-        self.add_config_keys(self.key_pressed_callbacks, from_config, config)
-
-    Config section for the above:
-        [Section Name]
-        action_1=a
-        action_2=b
-        quit=q
-    Only supports 1 modifier key at a time.
-    """
     @property
     def key_pressed_callbacks(self):
         if not hasattr(self, '_key_pressed_callbacks'):
@@ -125,7 +88,7 @@ class KeyPressedReceiver(Gtk.Widget):
                 tup = self.key_pressed_callbacks_mod_alt.get(keyval)
             else:
                 tup = self.key_pressed_callbacks.get(keyval)
-            if tup:
+            if tup and isinstance(tup, tuple):
                 callback = tup[0]
                 cb_args = None
                 if len(tup) >= 2:
@@ -142,7 +105,7 @@ class KeyPressedReceiver(Gtk.Widget):
             else:
                 log.debug("no action defined for keyval: 0x%x" % keyval)
         except KeyError as e:
-            log.debug("KeyError on callback: %s" % (e))
+            log.debug("KeyError on callback: %s" % e)
         except Exception as e:
             log.error("could not call callback (%s): %s" % (type(e).__name__, e))
 
@@ -160,11 +123,14 @@ class SongInfoDialog(Gtk.AlertDialog):
     Shows a MessageDialog with song tags and information.
     Click OK to exit.
     """
-    def __init__(self, parent, song, *args, **kwargs):
+    def __init__(self, parent, node, *args, **kwargs):
         """
         Build markup text to display, display markup text
         """
+        log = logging.getLogger(__name__+"."+self.__class__.__name__+"."+inspect.stack()[0].function)
         super().__init__(*args, **kwargs)
+        song = node.get_metadata()
+        log.debug("showing info for song: %s" % song)
         self.set_modal(True)
         message = ""
         detail = ""
@@ -185,9 +151,12 @@ class SongInfoDialog(Gtk.AlertDialog):
 
         if message == "":
             message = "File: %s" % song['file']
+            detail = "Foo"
         else:
             detail += "File: %s" % song['file']
 
+        log.debug("message: %s" % message)
+        log.debug("detail: %s" % detail)
         self.set_message(message)
         self.set_detail(detail)
         self.choose(parent=parent, cancellable=None, callback=None)
@@ -238,7 +207,7 @@ class CardSelectDialog(Gtk.Dialog):
         self.get_content_area().append(vbox)
 
         self.connect('response', self.on_response)
-        self.show()
+        #self.show()
 
     def on_response(self, dialog, response):
         self.destroy()
@@ -313,7 +282,7 @@ class OptionsDialog(Gtk.Dialog):
         self.get_content_area().append(self.single_button)
 
         self.connect('response', self.on_response)
-        self.show()
+        #self.show()
 
     def on_response(self, dialog, response):
         self.destroy()
@@ -363,12 +332,10 @@ class ContentTreeLabel(Gtk.Label):
 
     def set_node(self, node:data.ContentTreeNode):
         self._node = node
-
     def get_node(self):
         if not hasattr(self, '_node'):
             return None
         return self._node
-
     node = property(fget=get_node, fset=set_node)
 
 class IndexedListBox(Gtk.ListBox):
@@ -421,7 +388,7 @@ class ColumnBrowser(Gtk.Box, KeyPressedReceiver):
             listbox = IndexedListBox()
             listbox.set_hexpand(hexpand)
             listbox.set_vexpand(vexpand)
-            listbox.set_index(i)
+            listbox.index = i
             listbox.connect("row-selected", self.on_row_selected)
             #listbox.connect("row-activated", self.on_row_activated)
             scroll.set_child(listbox)
@@ -439,7 +406,7 @@ class ColumnBrowser(Gtk.Box, KeyPressedReceiver):
         }
         self.add_config_keys(self.key_pressed_callbacks, callback_config_tuples, self.app.config)
 
-    def get_last_selected_row(self, widget=None):
+    def get_last_selected_row(self):
         log = logging.getLogger(__name__ + "." + self.__class__.__name__ + "." + inspect.stack()[0].function)
         for i in range(self.num_columns-1, -1, -1):
             row = self._columns[i].get_selected_row()
@@ -477,7 +444,7 @@ class ColumnBrowser(Gtk.Box, KeyPressedReceiver):
         if not label:
             log.error("label is None")
             return
-        node = label.get_node()
+        node = label.node
         if not node:
             log.error("node is None")
             return
@@ -505,16 +472,16 @@ class ColumnBrowser(Gtk.Box, KeyPressedReceiver):
         """
         log = logging.getLogger(__name__+"."+self.__class__.__name__+"."+inspect.stack()[0].function)
         selected = self.get_last_selected_row()
+        if not selected:
+            log.error("no row selected")
+            return
         log.debug("selected: %s" % selected)
-        if not isinstance(selected.get_child(), ContentTreeLabel):
+        label = selected.get_child()
+        if not label and not isinstance(label, ContentTreeLabel):
             log.error("ColumnBrowser selected row child is of type: %s" % type(selected.get_child()).__name__)
             return
-        song = selected.get_child().node.get_metadata()
-        if song is None:
-            log.error("node has no metadata: %s" % selected.get_child().node.metaname)
-            return
-        log.debug("song info: %s" % song)
-        dialog = SongInfoDialog(self.parent, song)
+        log.debug("song info: %s" % label.node.get_metadata())
+        dialog = SongInfoDialog(self.parent, label.node)
 
 class PlaybackDisplay(Gtk.Grid):
     def __init__(self, parent:Gtk.Window, app:Gtk.Application, sound_card:int=None, sound_device:int=None, *args, **kwargs):
@@ -674,23 +641,18 @@ class PlaybackDisplay(Gtk.Grid):
         prev_button_ctrlr = Gtk.GestureClick.new()
         prev_button_ctrlr.connect("pressed", self.previous_clicked)
         self.previous_button.add_controller(prev_button_ctrlr)
-
         rew_button_ctrlr = Gtk.GestureClick.new()
         rew_button_ctrlr.connect("pressed", self.rewind_clicked)
         self.rewind_button.add_controller(rew_button_ctrlr)
-
         stop_button_ctrlr = Gtk.GestureClick.new()
         stop_button_ctrlr.connect("pressed", self.stop_clicked)
         self.stop_button.add_controller(stop_button_ctrlr)
-
         play_button_ctrlr = Gtk.GestureClick.new()
         play_button_ctrlr.connect("pressed", self.play_clicked)
         self.play_button.add_controller(play_button_ctrlr)
-
         cue_button_ctrlr = Gtk.GestureClick.new()
         cue_button_ctrlr.connect("pressed", self.cue_clicked)
         self.cue_button.add_controller(cue_button_ctrlr)
-
         next_button_ctrlr = Gtk.GestureClick.new()
         next_button_ctrlr.connect("pressed", self.next_clicked)
         self.next_button.add_controller(next_button_ctrlr)
@@ -979,7 +941,7 @@ class PlaylistDisplay(Gtk.ListBox, KeyPressedReceiver):
             for song in playlist:
                 log.debug("adding song to playlist: %s" % song['title'])
                 self.liststore.append(data.ContentTreeNode(metadata=song))
-            if self.last_selected != None:
+            if not self.last_selected is None:
                 self.select_row(self.get_row_at_index(self.last_selected))
             if self.parent.focus_on == "playlist" and self.get_row_at_index(self.last_selected):
                 self.get_row_at_index(self.last_selected).grab_focus()
@@ -1004,10 +966,10 @@ class PlaylistDisplay(Gtk.ListBox, KeyPressedReceiver):
         Displays dialog with playlist edit options. Performs task based on user input.
         Play, move song up in playlist, down in playlist, delete from playlist.
         """
-        song = self.get_selected_row().get_child().get_node().get_metadata()
-        self.edit_playlist_dialog = PlaylistEditDialog(parent=self.parent, song=song)
-        self.edit_playlist_dialog.connect('response', self.edit_response)
-        self.edit_playlist_dialog.show()
+        song = self.get_selected_row().get_child().node.get_metadata()
+        edit_playlist_dialog = PlaylistEditDialog(parent=self.parent, song=song)
+        edit_playlist_dialog.connect('response', self.edit_response)
+        edit_playlist_dialog.show()
 
     def edit_response(self, dialog, response):
         if response == Constants.playlist_edit_response_up:
@@ -1018,7 +980,7 @@ class PlaylistDisplay(Gtk.ListBox, KeyPressedReceiver):
             dialog.destroy()
             self.track_delete()
         elif response == Constants.playlist_edit_response_play:
-            song = self.get_selected_row().get_child().get_node().get_metadata()
+            song = self.get_selected_row().get_child().node.get_metadata()
             self.parent.mpd_playid(song['id'])
             dialog.destroy()
         elif response == Constants.playlist_edit_response_cancel:
@@ -1028,7 +990,7 @@ class PlaylistDisplay(Gtk.ListBox, KeyPressedReceiver):
         """
         Call SongInfoDialog to display the song data from the selected playlist row
         """
-        song = self.get_selected_row().get_child().get_node().get_metadata()
+        song = self.get_selected_row().get_child().node.get_metadata()
         if song is None:
             return
         log.debug("song info: %s" % song)
@@ -1036,33 +998,30 @@ class PlaylistDisplay(Gtk.ListBox, KeyPressedReceiver):
 
     def track_moveup(self):
         index = self.get_selected_row().get_index()
-        song = self.get_selected_row().get_child().get_node().get_metadata()
+        song = self.get_selected_row().get_child().node.get_metadata()
         log.debug("moving song up 1: '%s'" % song['title'])
         if index > 0:
             index -= 1
             self.app.mpd_moveid(song['id'], index)
         self.last_selected = index
-        self.focus_on = "playlist"
 
     def track_movedown(self):
         index = self.get_selected_row().get_index()
-        song = self.get_selected_row().get_child().get_node().get_metadata()
+        song = self.get_selected_row().get_child().node.get_metadata()
         log.debug("moving song down 1: '%s'" % song['title'])
         if index + 1 < len(self.liststore):
             self.app.mpd_moveid(song['id'], index+1)
         self.last_selected = index+1
-        self.focus_on = "playlist"
 
     def track_delete(self):
         index = self.get_selected_row().get_index()
-        song = self.get_selected_row().get_child().get_node().get_metadata()
+        song = self.get_selected_row().get_child().node.get_metadata()
         log.debug("deleting song: '%s'" % song)
         index -= 1
         if index < 0:
             index = 0
         self.app.mpd_deleteid(song['id'])
         self.last_selected = index
-        self.focus_on = "playlist"
 
 class MpdFrontWindow(Gtk.Window, KeyPressedReceiver):
     focus_on = "broswer"        ## Either 'playlist' or 'browser'
@@ -1073,6 +1032,7 @@ class MpdFrontWindow(Gtk.Window, KeyPressedReceiver):
         self.config = config
         self.app = application
         self.content_tree = content_tree
+        self._initial_resized = False
 
         ## Set basic window properties
         width = Constants.default_width
@@ -1192,14 +1152,15 @@ class MpdFrontWindow(Gtk.Window, KeyPressedReceiver):
 
     def event_options_dialog(self):
         mpd_status = self.app.mpd_status()
-        self.options_dialog = OptionsDialog(self, self.options_changed, mpd_status)
+        options_dialog = OptionsDialog(self, self.options_changed, mpd_status)
+        options_dialog.show()
 
     def event_cardselect_dialog(self):
-        self.cards_dialog = CardSelectDialog(self, self.soundcard_changed)
+        cards_dialog = CardSelectDialog(self, self.soundcard_changed)
+        cards_dialog.show()
 
     def event_focus_browser(self):
         ## Focus on the last selected row in the browser
-        self.focus_on = "broswer"
         self.browser.get_last_selected_row().grab_focus()
         if self.mainpaned.get_position() < Constants.divider_tolerance:
             self.mainpaned.set_position(self.mainpaned.get_height()/2)
@@ -1207,7 +1168,6 @@ class MpdFrontWindow(Gtk.Window, KeyPressedReceiver):
 
     def event_focus_playlist(self):
         ## Focus on the selected row in the playlist
-        self.focus_on = "playlist"
         selected_row = self.playlist_list.get_selected_row()
         if not selected_row:
             selected_row = self.playlist_list.get_row_at_index(0)
@@ -1248,7 +1208,7 @@ class MpdFrontWindow(Gtk.Window, KeyPressedReceiver):
 
     def add_to_playlist(self):
         """
-        Displays confirmation dialog, presenting options to add, replace or cancel.
+        Displays playlist confirmation dialog
         """
         log = logging.getLogger(__name__+"."+self.__class__.__name__+"."+inspect.stack()[0].function)
         selected = self.browser.get_last_selected_row()
@@ -1258,13 +1218,13 @@ class MpdFrontWindow(Gtk.Window, KeyPressedReceiver):
         if not label or not isinstance(label, ContentTreeLabel):
             return
         log.debug("selected metatype: %s" % label.node.metatype)
-        if not label.node.metatype in (Constants.node_t_song, Constants.node_t_album, Constants.node_t_file, Constants.node_t_dir):
-            log.debug("Not adding this node type")
+        if not label.node.metatype in (Constants.node_t_song, Constants.node_t_album, Constants.node_t_file):
+            log.debug("Not adding this node type: %s" % label.node.metatype)
             return
         log.debug("confirming add item: %s" % label.node.get_metadata())
-        self.playlist_confirm_dialog = PlaylistConfirmDialog(parent=self, add_item=label.node)
-        self.playlist_confirm_dialog.connect('response', self.playlist_confirm_dialog_response)
-        self.playlist_confirm_dialog.show()
+        playlist_confirm_dialog = PlaylistConfirmDialog(parent=self, add_item=label.node)
+        playlist_confirm_dialog.connect('response', self.playlist_confirm_dialog_response)
+        playlist_confirm_dialog.show()
 
     def outputs_changed(self, button, outputid):
         """
@@ -1309,55 +1269,27 @@ class MpdFrontWindow(Gtk.Window, KeyPressedReceiver):
         log = logging.getLogger(__name__ + "." + self.__class__.__name__ + "." + inspect.stack()[0].function)
         log.debug("dialog response: %s" % response)
         dialog.destroy()
+        selected = self.browser.get_last_selected_row()
+        if not selected:
+            log.error("attempting to add with nothing selected")
+            return
+        label = selected.get_child()
+        if not label or not isinstance(label, ContentTreeLabel):
+            log.error("no valid label returned from row: %s" % label)
+            return
+        node = label.node
         if response == Constants.playlist_confirm_reponse_replace:
             ## Clear list before adding for "replace"
             self.app.mpd_clear()
         if response in (Constants.playlist_confirm_reponse_add, Constants.playlist_confirm_reponse_replace):
-            if self.browser.get_last_selected_row().get_child().node.metatype in (Constants.node_t_song, Constants.node_t_file):
-                log.debug("adding song: %s" % self.browser.get_last_selected_row().get_child().node.get_metadata())
-                if self.browser.get_last_selected_row().get_child().node.metatype == Constants.node_t_song:
-                    self.app.mpd_add(self.browser.get_last_selected_row().get_child().node.get_metadata('file'))
-                elif self.browser.get_last_selected_row().get_child().node.metatype == Constants.node_t_file:
-                    self.app.mpd_add(self.browser.get_last_selected_row().get_child().node.get_metadata('data')['file'])
-                else:
-                    log.error("unhandled type: %s" % self.browser.get_last_selected_row().get_child().node.metatype)
-            elif self.browser.get_last_selected_row().get_child().node.metatype == Constants.node_t_album:
-                log.debug("adding album: %s" % self.browser.get_last_selected_row().get_child().node.metaname)
-                if self.browser.get_last_selected_row().get_child().node.previous.metatype == Constants.node_t_artist:
-                    log.debug("adding album by artist: %s" % self.browser.get_last_selected_row().get_child().node.previous.metaname)
-                    self.app.mpd_findadd("artist", self.browser.get_last_selected_row().get_child().node.previous.metatype, "album",
-                                         self.browser.get_last_selected_row().get_child().node.metaname)
-                elif self.browser.get_last_selected_row().get_child().node.previous.metatype == Constants.node_t_albumartist:
-                    log.debug("adding album by albumartist: %s" % self.browser.get_last_selected_row().get_child().node.previous.metaname)
-                    self.app.mpd_findadd("albumartist", self.browser.get_last_selected_row().get_child().node.previous.metaname, "album",
-                                         self.browser.get_last_selected_row().get_child().node.metaname)
-                elif self.browser.get_last_selected_row().get_child().node.previous.metatype == Constants.node_t_genre:
-                    log.debug("adding album by genre: %s" % self.browser.get_last_selected_row().get_child().node.previous.metaname)
-                    self.app.mpd_findadd("genre", self.browser.get_last_selected_row().get_child().node.previous.metaname, "album",
-                                         self.browser.get_last_selected_row().get_child().node.metaname)
-                elif self.browser.get_last_selected_row().get_child().node.previous.metatype == Constants.node_t_category:
-                    log.debug("adding album from toplevel: %s" % self.browser.get_last_selected_row().get_child().node.previous.metaname)
-                else:
-                    log.error("unhandled type 2: %s" % self.browser.get_last_selected_row().get_child().node.previous.metatype)
-            else:
-                log.error("unhandled type 1: %s" % self.browser.get_last_selected_row().get_child().node.metatype)
-
-    def on_mainpaned_show(self, widget, user_data):
-        log.debug("showed mainpaned, height: %d, %s" % (self.get_height(), user_data))
-        if self.get_height():
-            self.mainpaned.set_position(self.get_height()/2)
-        else:
-            self.mainpaned.set_position(self.props.default_height / 2)
+            self.app.add_to_playlist(node)
 
     def on_state_flags_changed(self, widget, flags):
         log = logging.getLogger(__name__ + "." + self.__class__.__name__ + "." + inspect.stack()[0].function)
         log.debug("state flags: %s" % flags)
-        if hasattr(self, '_initial_resized'):
-            if not self._initial_resized and (flags & Gtk.StateFlags.FOCUS_WITHIN):
-                #self.set_dividers()
-                self._initial_resized = True
-        else:
-            self._initial_resized = False
+        #if not self._initial_resized and (flags & Gtk.StateFlags.FOCUS_WITHIN):
+        #    self.set_dividers()
+        #    self._initial_resized = True
 
     def set_dividers(self):
         log = logging.getLogger(__name__+"."+self.__class__.__name__+"."+inspect.stack()[0].function)
