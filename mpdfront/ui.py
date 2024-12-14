@@ -322,14 +322,14 @@ class PlaylistConfirmDialog(Gtk.Dialog):
     _button_text_add        = "Add"
     _button_text_replace    = "Replace"
     _button_text_cancel     = "Cancel"
-    def __init__(self, parent, add_item_name, *args, **kwargs):
+    def __init__(self, parent, add_item:data.ContentTreeNode, *args, **kwargs):
         super().__init__(title="Update playlist?", *args, **kwargs)
         self.set_transient_for(parent)
         self.set_modal(True)
         self.add_button(self._button_text_add, Constants.playlist_confirm_reponse_add)
         self.add_button(self._button_text_replace, Constants.playlist_confirm_reponse_replace)
         self.add_button(self._button_text_cancel, Constants.playlist_confirm_reponse_cancel)
-        self.get_content_area().append(Gtk.Label(label="Selected: " + add_item_name))
+        self.get_content_area().append(Gtk.Label(label="Selected: " + add_item.metaname))
         self.get_content_area().set_size_request(300, 100)
 
 class PlaylistEditDialog(Gtk.Dialog):
@@ -414,7 +414,7 @@ class ColumnBrowser(Gtk.Box, KeyPressedReceiver):
         self.previous_selected = None
         self.set_spacing(spacing)
         self.num_columns = cols
-        self.columns = []
+        self._columns = []
         ## Initialize the columns
         for i in range(0, cols):
             scroll = Gtk.ScrolledWindow()
@@ -426,9 +426,9 @@ class ColumnBrowser(Gtk.Box, KeyPressedReceiver):
             #listbox.connect("row-activated", self.on_row_activated)
             scroll.set_child(listbox)
             self.append(scroll)
-            self.columns.append(listbox)
+            self._columns.append(listbox)
         ## Initialize data in 1st column
-        self.columns[0].bind_model(model=content_tree, create_widget_func=self.create_list_label)
+        self._columns[0].bind_model(model=content_tree, create_widget_func=self.create_list_label)
 
         self.set_key_pressed_controller()
         self.key_pressed_callbacks = {
@@ -439,25 +439,29 @@ class ColumnBrowser(Gtk.Box, KeyPressedReceiver):
         }
         self.add_config_keys(self.key_pressed_callbacks, callback_config_tuples, self.app.config)
 
-    def get_selected_rows(self):
-        """
-        Gets the child objects of all selected rows.
-        Inserting them into a list in order from least to highest column index.
-        :return: list of selected rows' child objects.
-        """
+    def get_last_selected_row(self, widget=None):
         log = logging.getLogger(__name__ + "." + self.__class__.__name__ + "." + inspect.stack()[0].function)
-        log.debug("looking for selected row")
-        ret = []
-        for c in self.columns:
-            row = c.get_selected_row()
-            if row:
-                child = row.get_child()
-                ret.append(child.get_node())
-        return ret
+        for i in range(self.num_columns-1, -1, -1):
+            row = self._columns[i].get_selected_row()
+            if not row:
+                log.debug("no selected row: %d" % i)
+                continue
+            return row
+
+    def get_last_focused(self, widget=None):
+        log = logging.getLogger(__name__ + "." + self.__class__.__name__ + "." + inspect.stack()[0].function)
+        if not widget:
+            widget = self
+        focus_child = widget.get_focus_child()
+        log.debug("focus child: %s" % widget.get_focus_child())
+        if not focus_child:
+            return widget
+        else:
+            return self.get_last_focused(widget=focus_child)
 
     def create_list_label(self, node):
         log = logging.getLogger(__name__+"."+self.__class__.__name__+"."+inspect.stack()[0].function)
-        label = ContentTreeLabel(label=node.get_metaname(), node=node)
+        label = ContentTreeLabel(label=node.metaname, node=node)
         label.set_halign(Gtk.Align.START)
         label.set_valign(Gtk.Align.START)
         log.debug("returning label for: %s" % label.get_label())
@@ -477,20 +481,20 @@ class ColumnBrowser(Gtk.Box, KeyPressedReceiver):
         if not node:
             log.error("node is None")
             return
-        log.debug("row selected: %s %s" % (node.get_metatype(), node.get_metadata()))
+        log.debug("row selected: %s %s" % (node.metatype, node.get_metadata()))
         ## clear out all columns to the right
         for i in range(listbox.get_index()+1, self.num_columns):
-            self.columns[i].bind_model(model=None, create_widget_func=None)
+            self._columns[i].bind_model(model=None, create_widget_func=None)
         ## load and show the next column to the right based on the current column
         self.app.load_content_data(node=node)
-        if node.get_metatype() not in (Constants.node_t_song, Constants.node_t_file) and listbox.get_index() < self.num_columns-1:
-            self.columns[listbox.get_index()+1].bind_model(model=node.get_child_layer(), create_widget_func=self.create_list_label)
+        if node.metatype not in (Constants.node_t_song, Constants.node_t_file) and listbox.get_index() < self.num_columns-1:
+            self._columns[listbox.get_index()+1].bind_model(model=node.get_child_layer(), create_widget_func=self.create_list_label)
 
     def on_row_activated(self, listbox, listboxrow):
         log = logging.getLogger(__name__ + "." + self.__class__.__name__ + "." + inspect.stack()[0].function)
         try:
             label = listboxrow.get_child()
-            if label.get_metatype() in ('song', 'album'):
+            if label.metatype in ('song', 'album'):
                 self.parent.add_to_playlist()
         except Exception as e:
             log.error("error on row_activated (%s): %s" % (type(e).__name__, e))
@@ -500,8 +504,14 @@ class ColumnBrowser(Gtk.Box, KeyPressedReceiver):
         Call SongInfoDialog to display the song data from the selected browser row
         """
         log = logging.getLogger(__name__+"."+self.__class__.__name__+"."+inspect.stack()[0].function)
-        song = self.get_selected_rows()[-1].get_metadata()
+        selected = self.get_last_selected_row()
+        log.debug("selected: %s" % selected)
+        if not isinstance(selected.get_child(), ContentTreeLabel):
+            log.error("ColumnBrowser selected row child is of type: %s" % type(selected.get_child()).__name__)
+            return
+        song = selected.get_child().node.get_metadata()
         if song is None:
+            log.error("node has no metadata: %s" % selected.get_child().node.metaname)
             return
         log.debug("song info: %s" % song)
         dialog = SongInfoDialog(self.parent, song)
@@ -940,7 +950,7 @@ class PlaylistDisplay(Gtk.ListBox, KeyPressedReceiver):
 
     def __init__(self, parent:Gtk.Window, app:Gtk.Application,  *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.set_name("playlistbox")
+        self.set_name("playlist-display")
         self.liststore = Gio.ListStore()
         self.bind_model(model=self.liststore, create_widget_func=self.create_list_label)
         self.parent = parent
@@ -1092,10 +1102,10 @@ class MpdFrontWindow(Gtk.Window, KeyPressedReceiver):
         self.set_child(self.mainpaned)
 
         ## Setup browser columns
-        self.browser_box = ColumnBrowser(parent=self, app=self.app, content_tree=self.content_tree,
+        self.browser = ColumnBrowser(parent=self, app=self.app, content_tree=self.content_tree,
                                          cols=Constants.browser_num_columnns, spacing=0, hexpand=True, vexpand=True)
-        self.browser_box.set_name("browser")
-        self.mainpaned.set_start_child(self.browser_box)
+        self.browser.set_name("browser")
+        self.mainpaned.set_start_child(self.browser)
 
         ## Setup bottom half
         self.bottompaned = Gtk.Paned(orientation=Gtk.Orientation.HORIZONTAL)
@@ -1171,7 +1181,7 @@ class MpdFrontWindow(Gtk.Window, KeyPressedReceiver):
         ## Set initially selected widgets
         self._playlist_last_selected = 0
         self.playlist_list.select_row(self.playlist_list.get_row_at_index(self._playlist_last_selected))
-        self.browser_box.columns[0].select_row(self.browser_box.columns[0].get_row_at_index(0))
+        #self.browser.columns[0].select_row(self.browser.columns[0].get_row_at_index(0))
 
         ## Set event handlers
         self.connect("destroy", self.destroy)
@@ -1190,13 +1200,10 @@ class MpdFrontWindow(Gtk.Window, KeyPressedReceiver):
     def event_focus_browser(self):
         ## Focus on the last selected row in the browser
         self.focus_on = "broswer"
-        selected_items = self.browser_box.get_selected_rows()
-        if not len(selected_items):
-            self.browser_box.columns[0].select_row(self.browser_box.columns[0].get_row_at_index(0))
-            selected_items = self.browser_box.get_selected_rows()
-        focus_col = self.browser_box.columns[len(selected_items) - 1]
-        focus_row = focus_col.get_selected_row()
-        focus_row.grab_focus()
+        self.browser.get_last_selected_row().grab_focus()
+        if self.mainpaned.get_position() < Constants.divider_tolerance:
+            self.mainpaned.set_position(self.mainpaned.get_height()/2)
+        return
 
     def event_focus_playlist(self):
         ## Focus on the selected row in the playlist
@@ -1243,31 +1250,21 @@ class MpdFrontWindow(Gtk.Window, KeyPressedReceiver):
         """
         Displays confirmation dialog, presenting options to add, replace or cancel.
         """
-        self.browser_selected_items = self.browser_box.get_selected_rows()
-        log.debug("selected items: %s" % self.browser_selected_items)
-        if not self.browser_selected_items[-1].get_metatype() in (Constants.node_t_song, Constants.node_t_album, Constants.node_t_file):
+        log = logging.getLogger(__name__+"."+self.__class__.__name__+"."+inspect.stack()[0].function)
+        selected = self.browser.get_last_selected_row()
+        if not selected:
             return
-        add_item_name = ""
-        for i in range(1, len(self.browser_selected_items)):
-            log.debug("confirming add item: %s" % self.browser_selected_items[i].get_metaname())
-            if self.browser_selected_items[i].get_metatype() == Constants.node_t_song:
-                add_item_name += self.browser_selected_items[i].get_metadata('title') + " "
-            else:
-                add_item_name += self.browser_selected_items[i].get_metaname() + " "
-        log.debug("confirming add item: %s" % add_item_name)
-        self.playlist_confirm_dialog = PlaylistConfirmDialog(parent=self, add_item_name=add_item_name)
+        label = selected.get_child()
+        if not label or not isinstance(label, ContentTreeLabel):
+            return
+        log.debug("selected metatype: %s" % label.node.metatype)
+        if not label.node.metatype in (Constants.node_t_song, Constants.node_t_album, Constants.node_t_file, Constants.node_t_dir):
+            log.debug("Not adding this node type")
+            return
+        log.debug("confirming add item: %s" % label.node.get_metadata())
+        self.playlist_confirm_dialog = PlaylistConfirmDialog(parent=self, add_item=label.node)
         self.playlist_confirm_dialog.connect('response', self.playlist_confirm_dialog_response)
         self.playlist_confirm_dialog.show()
-
-    def browser_info_popup(self):
-        """
-        Call SongInfoDialog to display the song data from the selected browser row
-        """
-        song = self.browser_box.get_selected_rows()[-1]['data']
-        if song is None:
-            return
-        log.debug("song info: %s" % song)
-        dialog = SongInfoDialog(self, song)
 
     def outputs_changed(self, button, outputid):
         """
@@ -1316,35 +1313,34 @@ class MpdFrontWindow(Gtk.Window, KeyPressedReceiver):
             ## Clear list before adding for "replace"
             self.app.mpd_clear()
         if response in (Constants.playlist_confirm_reponse_add, Constants.playlist_confirm_reponse_replace):
-            if self.browser_selected_items[-1].get_metatype() in (Constants.node_t_song, Constants.node_t_file):
-                log.debug("adding song: %s" % self.browser_selected_items[-1].get_metadata())
-                if self.browser_selected_items[-1].get_metatype() == Constants.node_t_song:
-                    self.app.mpd_add(self.browser_selected_items[-1].get_metadata('file'))
-                elif self.browser_selected_items[-1].get_metatype() == Constants.node_t_file:
-                    self.app.mpd_add(self.browser_selected_items[-1].get_metadata('data')['file'])
+            if self.browser.get_last_selected_row().get_child().node.metatype in (Constants.node_t_song, Constants.node_t_file):
+                log.debug("adding song: %s" % self.browser.get_last_selected_row().get_child().node.get_metadata())
+                if self.browser.get_last_selected_row().get_child().node.metatype == Constants.node_t_song:
+                    self.app.mpd_add(self.browser.get_last_selected_row().get_child().node.get_metadata('file'))
+                elif self.browser.get_last_selected_row().get_child().node.metatype == Constants.node_t_file:
+                    self.app.mpd_add(self.browser.get_last_selected_row().get_child().node.get_metadata('data')['file'])
                 else:
-                    log.error("unhandled type: %s" % self.browser_selected_items[-1].get_metatype())
-            elif self.browser_selected_items[-1].get_metatype() == Constants.node_t_album:
-                log.debug("adding album: %s" % self.browser_selected_items[-1].get_metaname())
-                if self.browser_selected_items[-2].get_metatype() == Constants.node_t_artist:
-                    log.debug("adding album by artist: %s" % self.browser_selected_items[-2].get_metaname())
-                    self.app.mpd_findadd("artist", self.browser_selected_items[-2].get_metatype(), "album",
-                                         self.browser_selected_items[-1].get_metaname())
-                elif self.browser_selected_items[-2].get_metatype() == Constants.node_t_albumartist:
-                    log.debug("adding album by albumartist: %s" % self.browser_selected_items[-2].get_metaname())
-                    self.app.mpd_findadd("albumartist", self.browser_selected_items[-2].get_metaname(), "album",
-                                         self.browser_selected_items[-1].get_metaname())
-                elif self.browser_selected_items[-2].get_metatype() == Constants.node_t_genre:
-                    log.debug("adding album by genre: %s" % self.browser_selected_items[-2].get_metaname())
-                    self.app.mpd_findadd("genre", self.browser_selected_items[-2].get_metaname(), "album",
-                                         self.browser_selected_items[-1].get_metaname())
-                elif self.browser_selected_items[-2].get_metatype() == Constants.node_t_category:
-                    log.debug("adding album from toplevel: %s" % self.browser_selected_items[-2].get_metaname())
+                    log.error("unhandled type: %s" % self.browser.get_last_selected_row().get_child().node.metatype)
+            elif self.browser.get_last_selected_row().get_child().node.metatype == Constants.node_t_album:
+                log.debug("adding album: %s" % self.browser.get_last_selected_row().get_child().node.metaname)
+                if self.browser.get_last_selected_row().get_child().node.previous.metatype == Constants.node_t_artist:
+                    log.debug("adding album by artist: %s" % self.browser.get_last_selected_row().get_child().node.previous.metaname)
+                    self.app.mpd_findadd("artist", self.browser.get_last_selected_row().get_child().node.previous.metatype, "album",
+                                         self.browser.get_last_selected_row().get_child().node.metaname)
+                elif self.browser.get_last_selected_row().get_child().node.previous.metatype == Constants.node_t_albumartist:
+                    log.debug("adding album by albumartist: %s" % self.browser.get_last_selected_row().get_child().node.previous.metaname)
+                    self.app.mpd_findadd("albumartist", self.browser.get_last_selected_row().get_child().node.previous.metaname, "album",
+                                         self.browser.get_last_selected_row().get_child().node.metaname)
+                elif self.browser.get_last_selected_row().get_child().node.previous.metatype == Constants.node_t_genre:
+                    log.debug("adding album by genre: %s" % self.browser.get_last_selected_row().get_child().node.previous.metaname)
+                    self.app.mpd_findadd("genre", self.browser.get_last_selected_row().get_child().node.previous.metaname, "album",
+                                         self.browser.get_last_selected_row().get_child().node.metaname)
+                elif self.browser.get_last_selected_row().get_child().node.previous.metatype == Constants.node_t_category:
+                    log.debug("adding album from toplevel: %s" % self.browser.get_last_selected_row().get_child().node.previous.metaname)
                 else:
-                    log.error("unhandled type 2: %s" % self.browser_selected_items[-2].get_metatype())
+                    log.error("unhandled type 2: %s" % self.browser.get_last_selected_row().get_child().node.previous.metatype)
             else:
-                log.error("unhandled type 1: %s" % self.browser_selected_items[-1].get_metatype())
-        self.browser_selected_items = None
+                log.error("unhandled type 1: %s" % self.browser.get_last_selected_row().get_child().node.metatype)
 
     def on_mainpaned_show(self, widget, user_data):
         log.debug("showed mainpaned, height: %d, %s" % (self.get_height(), user_data))
