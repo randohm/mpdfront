@@ -8,7 +8,7 @@ def read_requirements(file):
 
 setup(
     name = "mpdfront",
-    version = "0.2.2",
+    version = "0.2.0",
     license = "Apache License v2.0",
     url = "https://github.com/randohm/mpdfront.git",
     description = "Frontend for MPD",
