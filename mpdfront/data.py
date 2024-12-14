@@ -7,7 +7,7 @@ from gi.repository import GObject, Gio
 log = logging.getLogger(__name__)
 
 class ContentTreeNode(GObject.GObject):
-    def __init__(self, metadata:dict, *args, **kwargs):
+    def __init__(self, metadata:dict, previous=None, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._metadata = metadata
         self._child_layer = Gio.ListStore()
@@ -19,8 +19,8 @@ class ContentTreeNode(GObject.GObject):
             self._metatype = metadata['type']
         else:
             self._metatype = None
-        if 'previous' in metadata:
-            self._previous = metadata['previous']
+        if previous:
+            self._previous = previous
         if 'previous_type' in metadata:
             self._previous_type = metadata['previous_type']
         if 'next_type' in metadata:
@@ -53,9 +53,25 @@ class ContentTreeNode(GObject.GObject):
         if not hasattr(self, "_metatype"):
             return None
         return self._metatype
-    def set_metatype(self, type:str):
-        self._metatype = type
+    def set_metatype(self, metatype:str):
+        self._metatype = metatype
     metatype = property(fget=get_metatype, fset=set_metatype)
+
+    def get_previous(self):
+        if not hasattr(self, "_previous"):
+            return None
+        return self._previous
+    def set_previous(self, previous):
+        self._previous = previous
+    previous = property(fget=get_previous, fset=set_previous)
+
+    def get_next_type(self):
+        if not hasattr(self, "_next_type"):
+            return None
+        return self._next_type
+    def set_next_type(self, next_type:str):
+        self._next_type = next_type
+    next_type = property(fget=get_next_type, fset=set_next_type)
 
 def dump(tree:Gio.ListStore, indent:str=""):
     n_items = tree.get_n_items()
