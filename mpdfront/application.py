@@ -41,6 +41,7 @@ def node_sort_by_track(row1:data.ContentTreeNode, row2:data.ContentTreeNode):
     :param row2: right now
     :return: value of comparison expression
     """
+    log = logging.getLogger(__name__ + "." + inspect.stack()[0].function)
     try:
         log.debug("comparing input: %s,%s > %s,%s" % (row1.get_metadata('disc'), row1.get_metadata('track'), row2.get_metadata('disc'), row2.get_metadata('track')))
         if row1.get_metadata('disc') and row2.get_metadata('disc'):
@@ -165,27 +166,27 @@ class MpdFrontApp(Gtk.Application):
         return lambda *args, **kwargs: self._mpd_callbacks[command](*args, **kwargs)
 
     def on_activate(self, app):
-        #try:
-        self.window = MpdFrontWindow(application=self, config=self.config, content_tree=self.content_tree)
-        #except Exception as e:
-        #    log.critical("could not create main window (%s): %s" % (type(e).__name__, e))
-        #    self.quit()
-        #else:
-        if self.css_file and os.path.isfile(self.css_file):
-            log.debug("reading css file: %s" % self.css_file)
-            self.css_provider = Gtk.CssProvider.new()
-            try:
-                self.css_provider.load_from_path(self.css_file)
-                display = Gtk.Widget.get_display(self.window)
-                Gtk.StyleContext.add_provider_for_display(display, self.css_provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
-            except Exception as e:
-                log.error("could not load CSS (%s): %s" % (type(e).__name__, e))
-                #raise e
-        self.add_window(self.window)
-        self.window.present()
-        self.window.set_dividers()
-        self.refresh_playlist()
-        self.refresh_playback()
+        try:
+            self.window = MpdFrontWindow(application=self, config=self.config, content_tree=self.content_tree)
+        except Exception as e:
+            log.critical("could not create main window (%s): %s" % (type(e).__name__, e))
+            self.quit()
+        else:
+            if self.css_file and os.path.isfile(self.css_file):
+                log.debug("reading css file: %s" % self.css_file)
+                self.css_provider = Gtk.CssProvider.new()
+                try:
+                    self.css_provider.load_from_path(self.css_file)
+                    display = Gtk.Widget.get_display(self.window)
+                    Gtk.StyleContext.add_provider_for_display(display, self.css_provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+                except Exception as e:
+                    log.error("could not load CSS (%s): %s" % (type(e).__name__, e))
+                    #raise e
+            self.add_window(self.window)
+            self.window.present()
+            self.window.set_dividers()
+            self.refresh_playlist()
+            self.refresh_playback()
 
     def on_quit(self, app):
         self.quit()
@@ -414,7 +415,7 @@ class MpdFrontApp(Gtk.Application):
             log.debug("adding album: %s" % node.metaname)
             if node.previous.metatype == Constants.node_t_artist:
                 log.debug("adding album by artist: %s" % node.previous.metaname)
-                self.mpd_findadd("artist", node.previous.metatype, "album", node.metaname)
+                self.mpd_findadd("artist", node.previous.metaname, "album", node.metaname)
             elif node.previous.metatype == Constants.node_t_albumartist:
                 log.debug("adding album by albumartist: %s" % node.previous.metaname)
                 self.mpd_findadd("albumartist", node.previous.metaname, "album", node.metaname)

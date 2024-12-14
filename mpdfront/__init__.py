@@ -32,7 +32,7 @@ def main():
     ## load configs and run application
     if not os.path.exists(args.config):  ## verify config file exists
         sys.stderr.write("config file not found: %s\n" % args.config)
-        sys.exit(1)
+        return  1
     config = configparser.ConfigParser()
     config.read(args.config)
 
@@ -62,11 +62,11 @@ def main():
         log.setLevel(logging.INFO)
 
     ## Create App object and run it
-    #try:
-    app = MpdFrontApp(config=config, css_file=args.css, application_id=Constants.application_id, host=args.host, port=args.port)
-    #except Exception as e:
-    #    sys.stderr.write("could not create application: %s\n" % e)
-    #    sys.exit(2)
+    try:
+        app = MpdFrontApp(config=config, css_file=args.css, application_id=Constants.application_id, host=args.host, port=args.port)
+    except Exception as e:
+        sys.stderr.write("could not create application: %s\n" % e)
+        return 2
 
     app.run(None)
-    sys.exit(0)
+    return 0
