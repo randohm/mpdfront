@@ -958,8 +958,9 @@ class PlaylistDisplay(Gtk.ListBox, KeyPressedReceiver):
 
     def create_list_label(self, node):
         if node.get_metadata('track') and node.get_metadata('time') and node.get_metadata('title'):
-            label_text = re.sub(r'/.*', '', html.escape(node.get_metadata('track'))) + " (" + html.escape(
-                pp_time(node.get_metadata('time'))) + ") <b>" + html.escape(node.get_metadata('title')) + "</b>"
+            label_text = "%s (%s) <b>%s</b> <i>%s - %s</i>" % (re.sub(r'/.*', '', html.escape(node.get_metadata('track'))),
+                                html.escape(pp_time(node.get_metadata('time'))), html.escape(node.get_metadata('title')),
+                                html.escape(node.get_metadata('artist')), html.escape(node.get_metadata('album')))
         else:
             label_text = os.path.basename(node.get_metadata('file'))
         label = ContentTreeLabel(node=node)
