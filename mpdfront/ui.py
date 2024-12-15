@@ -21,6 +21,11 @@ def pp_time(secs):
     """
     return "%d:%02d" % (int(int(secs) / 60), int(secs) % 60)
 
+def pp_file_format(format:str):
+    s = format.split(':')
+    rate = float(s[0])/1000
+    return "%.1fkHz %s bits %s channels" % (rate, s[1], s[2])
+
 class KeyPressedReceiver(Gtk.Widget):
     @property
     def key_pressed_callbacks(self):
@@ -118,48 +123,62 @@ class KeyPressedReceiver(Gtk.Widget):
                 callbacks[ord(config.get(*k))] = addition[k]
         log.debug("keypress callbacks: %s" % callbacks)
 
-class SongInfoDialog(Gtk.AlertDialog):
-    """
-    Shows a MessageDialog with song tags and information.
-    Click OK to exit.
-    """
-    def __init__(self, parent, node, *args, **kwargs):
-        """
-        Build markup text to display, display markup text
-        """
+class SongInfoDialog(Gtk.Window):
+    def __init__(self, window:Gtk.Window, node:data.ContentTreeNode, *args, **kwargs):
         log = logging.getLogger(__name__+"."+self.__class__.__name__+"."+inspect.stack()[0].function)
         super().__init__(*args, **kwargs)
+        self._builder = Gtk.Builder.new_from_file("songinfo.ui")
+        if not self._builder:
+            log.error("could not create builder")
+            return
+        main_box = self._builder.get_object('main-box')
+        if not main_box:
+            log.error("main_box is None")
+            return
+        self.set_child(main_box)
+        self.set_transient_for(window)
+        #self.set_size_request(600, 400)
+
         song = node.get_metadata()
-        log.debug("showing info for song: %s" % song)
-        self.set_modal(True)
-        message = ""
-        detail = ""
+        log.debug("song: %s" % song)
         if 'title' in song:
-            message = song['title']
+            self._builder.get_object('songtitle').set_label(song['title'])
         if 'artist' in song:
-            detail += "Artist: %s\n" % song['artist']
+            self._builder.get_object('artist-label').set_label(song['artist'])
+        if 'albumartist' in song:
+            self._builder.get_object('albumartist-label').set_label(song['albumartist'])
         if 'album' in song:
-            detail += "Album: %s\n" % song['album']
+            self._builder.get_object('album-label').set_label(song['album'])
         if 'time' in song:
-            detail += "Time: %s\n" % pp_time(song['time'])
+            self._builder.get_object('time-label').set_label(pp_time(song['time']))
         if 'track' in song:
-            detail += "Track: %s\n" % song['track']
+            self._builder.get_object('track-label').set_label(song['track'])
         if 'date' in song:
-            detail += "Date: %s\n" % song['date']
+            self._builder.get_object('date-label').set_label(song['date'])
         if 'genre' in song:
-            detail += "Genre: %s\n" % song['genre']
+            self._builder.get_object('genre-label').set_label(song['genre'])
+        if 'composer' in song:
+            self._builder.get_object('composer-label').set_label(song['composer'])
+        if 'format' in song:
+            self._builder.get_object('format-label').set_label(pp_file_format(song['format']))
+        if 'file' in song:
+            self._builder.get_object('file-label').set_label(song['file'])
+        if 'disc' in song:
+            self._builder.get_object('disc-label').set_label(song['disc'])
 
-        if message == "":
-            message = "File: %s" % song['file']
-            detail = "Foo"
-        else:
-            detail += "File: %s" % song['file']
+        button_click_ctrler = Gtk.GestureClick.new()
+        button_click_ctrler.connect("pressed", self.close_clicked)
+        self._builder.get_object('close-button').add_controller(button_click_ctrler)
+        button_pressed_ctrler = Gtk.EventControllerKey.new()
+        button_pressed_ctrler.connect("key-pressed", self.close_pressed)
+        self._builder.get_object('close-button').add_controller(button_pressed_ctrler)
 
-        log.debug("message: %s" % message)
-        log.debug("detail: %s" % detail)
-        self.set_message(message)
-        self.set_detail(detail)
-        self.choose(parent=parent, cancellable=None, callback=None)
+    def close_clicked(self, controller, x, y, user_data):
+        self.close()
+
+    def close_pressed(self, controller, keyval, keycode, state):
+        if keyval in (Gdk.KEY_Return, Gdk.KEY_Escape):
+            self.close()
 
 class CardSelectDialog(Gtk.Dialog):
     """
@@ -207,7 +226,6 @@ class CardSelectDialog(Gtk.Dialog):
         self.get_content_area().append(vbox)
 
         self.connect('response', self.on_response)
-        #self.show()
 
     def on_response(self, dialog, response):
         self.destroy()
@@ -282,7 +300,6 @@ class OptionsDialog(Gtk.Dialog):
         self.get_content_area().append(self.single_button)
 
         self.connect('response', self.on_response)
-        #self.show()
 
     def on_response(self, dialog, response):
         self.destroy()
@@ -415,17 +432,6 @@ class ColumnBrowser(Gtk.Box, KeyPressedReceiver):
                 continue
             return row
 
-    def get_last_focused(self, widget=None):
-        log = logging.getLogger(__name__ + "." + self.__class__.__name__ + "." + inspect.stack()[0].function)
-        if not widget:
-            widget = self
-        focus_child = widget.get_focus_child()
-        log.debug("focus child: %s" % widget.get_focus_child())
-        if not focus_child:
-            return widget
-        else:
-            return self.get_last_focused(widget=focus_child)
-
     def create_list_label(self, node):
         log = logging.getLogger(__name__+"."+self.__class__.__name__+"."+inspect.stack()[0].function)
         label = ContentTreeLabel(label=node.metaname, node=node)
@@ -482,6 +488,7 @@ class ColumnBrowser(Gtk.Box, KeyPressedReceiver):
             return
         log.debug("song info: %s" % label.node.get_metadata())
         dialog = SongInfoDialog(self.parent, label.node)
+        dialog.show()
 
 class PlaybackDisplay(Gtk.Grid):
     def __init__(self, parent:Gtk.Window, app:Gtk.Application, sound_card:int=None, sound_device:int=None, *args, **kwargs):
@@ -990,11 +997,19 @@ class PlaylistDisplay(Gtk.ListBox, KeyPressedReceiver):
         """
         Call SongInfoDialog to display the song data from the selected playlist row
         """
-        song = self.get_selected_row().get_child().node.get_metadata()
+        selected = self.get_selected_row()
+        if not selected:
+            log.error("no row selected")
+            return
+        label = selected.get_child()
+        if not label or not isinstance(label, ContentTreeLabel):
+            log.error("invalid child of row")
+        song = label.node.get_metadata()
         if song is None:
             return
         log.debug("song info: %s" % song)
-        dialog = SongInfoDialog(self.parent, song)
+        dialog = SongInfoDialog(self.parent, label.node)
+        dialog.show()
 
     def track_moveup(self):
         index = self.get_selected_row().get_index()
@@ -1151,6 +1166,7 @@ class MpdFrontWindow(Gtk.Window, KeyPressedReceiver):
         self.outputs_dialog = OutputsDialog(self, self.outputs_changed)
 
     def event_options_dialog(self):
+        log = logging.getLogger(__name__+"."+self.__class__.__name__+"."+inspect.stack()[0].function)
         mpd_status = self.app.mpd_status()
         options_dialog = OptionsDialog(self, self.options_changed, mpd_status)
         options_dialog.show()
