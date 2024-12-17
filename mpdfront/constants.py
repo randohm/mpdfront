@@ -81,3 +81,6 @@ class Constants:
     playlist_edit_response_delete = 4
 
     progressbar_height = 20
+    songinfo_title = "MPD Front Song Info"
+
+    ui_xml_songinfo = "./songinfo.ui"

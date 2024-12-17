@@ -126,8 +126,8 @@ class KeyPressedReceiver(Gtk.Widget):
 class SongInfoDialog(Gtk.Window):
     def __init__(self, window:Gtk.Window, node:data.ContentTreeNode, *args, **kwargs):
         log = logging.getLogger(__name__+"."+self.__class__.__name__+"."+inspect.stack()[0].function)
-        super().__init__(*args, **kwargs)
-        self._builder = Gtk.Builder.new_from_file("songinfo.ui")
+        super().__init__(title=Constants.songinfo_title, *args, **kwargs)
+        self._builder = Gtk.Builder.new_from_file(Constants.ui_xml_songinfo)
         if not self._builder:
             log.error("could not create builder")
             return
@@ -137,7 +137,9 @@ class SongInfoDialog(Gtk.Window):
             return
         self.set_child(main_box)
         self.set_transient_for(window)
-        #self.set_size_request(600, 400)
+        self.set_hexpand(False)
+        self.set_vexpand(False)
+        self.set_default_size(100, 100)
 
         song = node.get_metadata()
         log.debug("song: %s" % song)
@@ -147,6 +149,9 @@ class SongInfoDialog(Gtk.Window):
             self._builder.get_object('artist-label').set_label(song['artist'])
         if 'albumartist' in song:
             self._builder.get_object('albumartist-label').set_label(song['albumartist'])
+        else:
+            self._builder.get_object('albumartist-title').set_visible(False)
+            self._builder.get_object('albumartist-label').set_visible(False)
         if 'album' in song:
             self._builder.get_object('album-label').set_label(song['album'])
         if 'time' in song:
@@ -155,16 +160,28 @@ class SongInfoDialog(Gtk.Window):
             self._builder.get_object('track-label').set_label(song['track'])
         if 'date' in song:
             self._builder.get_object('date-label').set_label(song['date'])
+        else:
+            self._builder.get_object('date-title').set_visible(False)
+            self._builder.get_object('date-label').set_visible(False)
         if 'genre' in song:
+            self._builder.get_object('genre-label').set_label(song['genre'])
+        else:
+            self._builder.get_object('genre-title').set_label(song['genre'])
             self._builder.get_object('genre-label').set_label(song['genre'])
         if 'composer' in song:
             self._builder.get_object('composer-label').set_label(song['composer'])
+        else:
+            self._builder.get_object('composer-title').set_visible(False)
+            self._builder.get_object('composer-label').set_visible(False)
         if 'format' in song:
             self._builder.get_object('format-label').set_label(pp_file_format(song['format']))
         if 'file' in song:
             self._builder.get_object('file-label').set_label(song['file'])
         if 'disc' in song:
             self._builder.get_object('disc-label').set_label(song['disc'])
+        else:
+            self._builder.get_object('disc-title').set_visible(False)
+            self._builder.get_object('disc-label').set_visible(False)
 
         button_click_ctrler = Gtk.GestureClick.new()
         button_click_ctrler.connect("pressed", self.close_clicked)
@@ -177,7 +194,7 @@ class SongInfoDialog(Gtk.Window):
         self.close()
 
     def close_pressed(self, controller, keyval, keycode, state):
-        if keyval in (Gdk.KEY_Return, Gdk.KEY_Escape):
+        if keyval in (Gdk.KEY_Return, Gdk.KEY_Escape, Gdk.KEY_space):
             self.close()
 
 class CardSelectDialog(Gtk.Dialog):
@@ -487,6 +504,9 @@ class ColumnBrowser(Gtk.Box, KeyPressedReceiver):
             log.error("ColumnBrowser selected row child is of type: %s" % type(selected.get_child()).__name__)
             return
         log.debug("song info: %s" % label.node.get_metadata())
+        if not label.node.metatype in (Constants.node_t_song, Constants.node_t_file):
+            log.debug("not showing info popup for type: %s" % label.node.metatype)
+            return
         dialog = SongInfoDialog(self.parent, label.node)
         dialog.show()
 
@@ -741,10 +761,10 @@ class PlaybackDisplay(Gtk.Grid):
                     elif dac_bits in ("S16_LE"):
                         num_bits = 16
                     dac_text = "%3.1f kHz %d bit" % (float(dac_freq) / 1000, num_bits)
+                self.stats1_label.set_markup("<small><b>dac:</b></small> " + dac_text)
             else:
-                #log.debug("proc file does not exist")
-                pass
-            self.stats1_label.set_markup("<small><b>dac:</b></small> " + dac_text)
+                log.debug("proc file does not exist")
+                self.stats1_label.set_markup("")
         else:
             self.stats1_label.set_text(" ")
             self.stats2_label.set_text(" ")
@@ -958,7 +978,7 @@ class PlaylistDisplay(Gtk.ListBox, KeyPressedReceiver):
 
     def create_list_label(self, node):
         if node.get_metadata('track') and node.get_metadata('time') and node.get_metadata('title'):
-            label_text = "%s (%s) <b>%s</b> <i>%s - %s</i>" % (re.sub(r'/.*', '', html.escape(node.get_metadata('track'))),
+            label_text = "%s (%s)  <b>%s</b>  <small><i>%s - %s</i></small>" % (re.sub(r'/.*', '', html.escape(node.get_metadata('track'))),
                                 html.escape(pp_time(node.get_metadata('time'))), html.escape(node.get_metadata('title')),
                                 html.escape(node.get_metadata('artist')), html.escape(node.get_metadata('album')))
         else:

@@ -1,31 +1,23 @@
-* {
-    border-style: solid;
-    border-top-color: black;
-    border-bottom-color: black;
-    border-left-color: black;
-    border-right-color: black;
-}
-
-window, GtkWindow, Window {
-    background: linear-gradient(lightgray, #404040);
+window {
+    background: linear-gradient(lightgray, #484848);
     color: white;
     font-size: 18pt;
     font-family: Verdana;
 }
 
-box, GtkBox {
-    padding: 5px;
-}
-
-grid#playback-pane label, GtkGrid#playback-pane GtkLabel {
-    padding: 0px 8px 8px 8px;
-}
-
-grid#playback-pane image, GtkGrid#playback-pane GtkImage {
+box {
     padding: 0px;
 }
 
-scrolledwindow, GtkScrolledWindow {
+grid#playback-pane label {
+    padding: 0px 8px 8px 8px;
+}
+
+grid#playback-pane image {
+    padding: 0px;
+}
+
+scrolledwindow {
     padding: 7px;
 }
 
@@ -33,47 +25,60 @@ scrolledwindow, GtkScrolledWindow {
     padding: 5px 0px 0px 10px;
     font-size: 48pt;
     font-weight: bold;
-    text-shadow: -3px -3px 3px black, 3px -3px 3px black, -3px 3px 3px black, 3px 3px 3px black;
+    text-shadow: -5px -5px 5px black, -5px 5px 5px black, -5px 5px 5px black, 5px -5px 5px black,  5px 5px 5px black,
+                  5px -5px 5px black,  5px 5px 5px black,  5px 5px 5px black;
 }
 
 #current-artist {
     padding: 5px 0px 0px 10px;
     font-size: 40pt;
     font-weight: bold;
-    text-shadow: -2px -2px 2px black, 2px -2px 2px black, -2px 2px 2px black, 2px 2px 2px black;
+    text-shadow: -4px -4px 4px black, -4px 4px 4px black, -4px 4px 4px black, 4px -4px 4px black,  4px 4px 4px black,
+                  4px -4px 4px black,  4px 4px 4px black,  4px 4px 4px black;
 }
 
 #current-album {
     padding: 2px 0px 0px 10px;
     font-size: 36pt;
-    text-shadow: -2px -2px 2px black, 2px -2px 2px black, -2px 2px 2px black, 2px 2px 2px black;
+    text-shadow: -4px -4px 4px black, -4px 4px 4px black, -4px 4px 4px black, 4px -4px 4px black,  4px 4px 4px black,
+                  4px -4px 4px black,  4px 4px 4px black,  4px 4px 4px black;
 }
 
 #current-time {
     padding: 2px 0px 0px 10px;
     font-size: 28pt;
-    text-shadow: -2px -2px 2px black, 2px -2px 2px black, -2px 2px 2px black, 2px 2px 2px black;
+    text-shadow: -2px -2px 2px black, -2px 2px 2px black, -2px 2px 2px black, 2px -2px 2px black,  2px 2px 2px black,
+                  2px -2px 2px black,  2px 2px 2px black,  2px 2px 2px black;
 }
 
 #stats1, #stats2 {
     padding: 0px 0px 0px 10px;
     font-size: 20pt;
-    text-shadow: -2px -2px 2px black, 2px -2px 2px black, -2px 2px 2px black, 2px 2px 2px black;
+    text-shadow: -2px -2px 2px black, -2px 2px 2px black, -2px 2px 2px black, 2px -2px 2px black,  2px 2px 2px black,
+                  2px -2px 2px black,  2px 2px 2px black,  2px 2px 2px black;
 }
 
-button, button *, GtkButton, GtkButton * {
+button {
+    padding: 5px;
     background: black;
     color: white;
     border-radius: 0%;
+    border-color: white;
+    border-style: solid;
+    border-width: 1px;
 }
-button:active, button:active *, GtkButton:active, GtkButton:active * {
+button:active {
     color: black;
     background: white;
+    border-radius: 0%;
+    border-color: black;
+    border-style: solid;
+    border-width: 1px;
 }
 
-button:focus, button:focus *, Gtkutton:focus, GtkButton:focus * {
+button:focus {
     color: black;
-    background: lightgray;
+    background: gray;
 }
 
 dialog, messagedialog, Dialog, MessageDialog {
@@ -83,10 +88,14 @@ dialog, messagedialog, Dialog, MessageDialog {
 }
 
 #progressbar block.filled, #progressbar Block.filled {
-    background-color: #707090;
+    background-color: #585090;
 }
 #progressbar * {
     background-color: #d5e5e5;
+    border-style: solid;
+    border-color: black;
+    border-width: 1px;
+    border-radius: 0%;
 }
 
 #current-track {
