@@ -734,7 +734,7 @@ class PlaybackDisplay(Gtk.Grid):
             dac_freq = dac_bits = ""
             proc_file = Constants.proc_file_fmt % (self.sound_card, self.sound_device, "0")
             #proc_file = Constants.proc_file_fmt
-            #log.debug("proc file: %s" % proc_file)
+            log.debug("proc file: %s" % proc_file)
             if os.path.exists(proc_file):
                 lines = ()
                 try:
@@ -761,9 +761,11 @@ class PlaybackDisplay(Gtk.Grid):
                     elif dac_bits in ("S16_LE"):
                         num_bits = 16
                     dac_text = "%3.1f kHz %d bit" % (float(dac_freq) / 1000, num_bits)
+                self.stats1_label.set_visible(True)
                 self.stats1_label.set_markup("<small><b>dac:</b></small> " + dac_text)
             else:
                 log.debug("proc file does not exist")
+                self.stats1_label.set_visible(False)
                 self.stats1_label.set_markup("")
         else:
             self.stats1_label.set_text(" ")
@@ -1141,8 +1143,6 @@ class MpdFrontWindow(Gtk.Window, KeyPressedReceiver):
             Gdk.KEY_AudioNext:          (self.app.mpd_next,),
             Gdk.KEY_AudioRewind:        (self.app.mpd_seekcur, (Constants.rewind_arg,)),
             Gdk.KEY_AudioForward:       (self.app.mpd_seekcur, (Constants.cue_arg,)),
-            Gdk.KEY_v:                  (self.set_dividers,),
-            Gdk.KEY_q:                  (log.debug, ("pressed q",)),
             Gdk.KEY_b:                  (data.dump, (self.content_tree,)),
         }
         ## callbacks for meta mod key
@@ -1158,19 +1158,21 @@ class MpdFrontWindow(Gtk.Window, KeyPressedReceiver):
         #self.key_pressed_callbacks_mod_alt = {}
         ## keys defined in config file
         callback_config_tuples = {
-            (Constants.config_section_keys, "playpause"):      (self.app.mpd_toggle,),
-            (Constants.config_section_keys, "stop"):           (self.app.mpd_stop,),
-            (Constants.config_section_keys, "previous"):       (self.app.mpd_previous,),
-            (Constants.config_section_keys, "next"):           (self.app.mpd_next,),
-            (Constants.config_section_keys, "rewind"):         (self.app.mpd_seekcur, (Constants.rewind_arg,)),
-            (Constants.config_section_keys, "cue"):            (self.app.mpd_seekcur, (Constants.cue_arg,)),
-            (Constants.config_section_keys, "outputs"):        (self.event_outputs_dialog,),
-            (Constants.config_section_keys, "options"):        (self.event_options_dialog,),
-            (Constants.config_section_keys, "cardselect"):     (self.event_cardselect_dialog,),
-            (Constants.config_section_keys, "browser"):        (self.event_focus_browser,),
-            (Constants.config_section_keys, "playlist"):       (self.event_focus_playlist,),
-            (Constants.config_section_keys, "toggle_main"):    (self.event_toggle_main,),
-            (Constants.config_section_keys, "toggle_bottom"):  (self.event_toggle_bottom,),
+            (Constants.config_section_keys, "playpause"):       (self.app.mpd_toggle,),
+            (Constants.config_section_keys, "stop"):            (self.app.mpd_stop,),
+            (Constants.config_section_keys, "previous"):        (self.app.mpd_previous,),
+            (Constants.config_section_keys, "next"):            (self.app.mpd_next,),
+            (Constants.config_section_keys, "rewind"):          (self.app.mpd_seekcur, (Constants.rewind_arg,)),
+            (Constants.config_section_keys, "cue"):             (self.app.mpd_seekcur, (Constants.cue_arg,)),
+            (Constants.config_section_keys, "outputs"):         (self.event_outputs_dialog,),
+            (Constants.config_section_keys, "options"):         (self.event_options_dialog,),
+            (Constants.config_section_keys, "cardselect"):      (self.event_cardselect_dialog,),
+            (Constants.config_section_keys, "browser"):         (self.event_focus_browser,),
+            (Constants.config_section_keys, "playlist"):        (self.event_focus_playlist,),
+            (Constants.config_section_keys, "toggle_main"):     (self.event_toggle_main,),
+            (Constants.config_section_keys, "toggle_bottom"):   (self.event_toggle_bottom,),
+            (Constants.config_section_keys, "layout1"):    (self.set_layout1,),
+            (Constants.config_section_keys, "layout2"):     (self.set_layout2,),
         }
         self.add_config_keys(self.key_pressed_callbacks, callback_config_tuples, config)
 
@@ -1210,6 +1212,10 @@ class MpdFrontWindow(Gtk.Window, KeyPressedReceiver):
             selected_row = self.playlist_list.get_row_at_index(0)
             self.playlist_list.select_row(selected_row)
         selected_row.grab_focus()
+        if self.mainpaned.get_position() > (self.mainpaned.get_height() - Constants.divider_tolerance):
+            self.mainpaned.set_position(self.mainpaned.get_height()/2)
+        if self.bottompaned.get_position() > (self.bottompaned.get_width() - Constants.divider_tolerance):
+            self.bottompaned.set_position(self.bottompaned.get_width()/2)
 
     def event_toggle_main(self):
         """
@@ -1328,7 +1334,7 @@ class MpdFrontWindow(Gtk.Window, KeyPressedReceiver):
         #    self.set_dividers()
         #    self._initial_resized = True
 
-    def set_dividers(self):
+    def set_layout1(self):
         log = logging.getLogger(__name__+"."+self.__class__.__name__+"."+inspect.stack()[0].function)
         log.debug("setting dividers")
         if self.mainpaned.get_height():
@@ -1339,3 +1345,16 @@ class MpdFrontWindow(Gtk.Window, KeyPressedReceiver):
             self.bottompaned.set_position(self.bottompaned.get_width()/2)
         else:
             self.bottompaned.set_position(self.props.default_width/2)
+
+    def set_layout2(self):
+        log = logging.getLogger(__name__+"."+self.__class__.__name__+"."+inspect.stack()[0].function)
+        img_width = self.playback_display.current_albumart.get_paintable().get_width()
+        img_height = self.playback_display.current_albumart.get_paintable().get_height()
+        log.debug("img size: %d x %d" % (img_width, img_height))
+        pic_width = self.playback_display.current_albumart.get_width()
+        pic_height = self.playback_display.current_albumart.get_height()
+        log.debug("pic size: %d x %d" % (pic_width, pic_height))
+        aspect_ratio = img_width/img_height
+        new_position = int(pic_height/aspect_ratio)
+        log.debug("setting position to: %d, aspect ratio: %f" % (new_position, aspect_ratio))
+        self.bottompaned.set_position(new_position)

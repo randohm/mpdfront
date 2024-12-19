@@ -184,7 +184,7 @@ class MpdFrontApp(Gtk.Application):
                     #raise e
             self.add_window(self.window)
             self.window.present()
-            self.window.set_dividers()
+            self.window.set_layout1()
             self.refresh_playlist()
             self.refresh_playback()
 
