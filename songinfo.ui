@@ -1,0 +1,349 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+    <object id="main-box" class="GtkBox">
+        <property name="name">songinfo-main-box</property>
+        <property name="orientation">vertical</property>
+        <property name="hexpand">False</property>
+        <property name="vexpand">True</property>
+        <property name="halign">start</property>
+        <property name="valign">start</property>
+        <child>
+            <object id="songtitle" class="GtkLabel">
+                <property name="name">songinfo-songtitle</property>
+                <property name="label">Song Title</property>
+                <property name="hexpand">False</property>
+                <property name="vexpand">False</property>
+                <property name="halign">center</property>
+                <property name="valign">center</property>
+            </object>
+        </child>
+        <child>
+            <object id="info-grid" class="GtkGrid">
+                <property name="name">songinfo-info-grid</property>
+                <property name="hexpand">False</property>
+                <property name="vexpand">True</property>
+                <property name="halign">start</property>
+                <property name="valign">start</property>
+                <child>
+                    <object id="artist-title" class="GtkLabel">
+                        <property name="name">songinfo-artist-title</property>
+                        <property name="label">Artist: </property>
+                        <property name="hexpand">True</property>
+                        <property name="vexpand">False</property>
+                        <property name="halign">start</property>
+                        <property name="valign">start</property>
+                        <layout>
+                            <property name="column">0</property>
+                            <property name="row">0</property>
+                        </layout>
+                    </object>
+                </child>
+                <child>
+                    <object id="artist-label" class="GtkLabel">
+                        <property name="name">songinfo-artist-label</property>
+                        <property name="label"></property>
+                        <property name="hexpand">False</property>
+                        <property name="vexpand">False</property>
+                        <property name="halign">start</property>
+                        <property name="valign">start</property>
+                        <layout>
+                            <property name="column">1</property>
+                            <property name="row">0</property>
+                        </layout>
+                    </object>
+                </child>
+                <child>
+                    <object id="album-title" class="GtkLabel">
+                        <property name="name">songinfo-album-title</property>
+                        <property name="label">Album: </property>
+                        <property name="hexpand">True</property>
+                        <property name="vexpand">False</property>
+                        <property name="halign">start</property>
+                        <property name="valign">start</property>
+                        <layout>
+                            <property name="column">0</property>
+                            <property name="row">1</property>
+                        </layout>
+                    </object>
+                </child>
+                <child>
+                    <object id="album-label" class="GtkLabel">
+                        <property name="name">songinfo-album-label</property>
+                        <property name="label"></property>
+                        <property name="hexpand">False</property>
+                        <property name="vexpand">False</property>
+                        <property name="halign">start</property>
+                        <property name="valign">start</property>
+                        <layout>
+                            <property name="column">1</property>
+                            <property name="row">1</property>
+                        </layout>
+                    </object>
+                </child>
+                <child>
+                    <object id="albumartist-title" class="GtkLabel">
+                        <property name="name">songinfo-albumartist-title</property>
+                        <property name="label">Album artist: </property>
+                        <property name="hexpand">True</property>
+                        <property name="vexpand">False</property>
+                        <property name="halign">start</property>
+                        <property name="valign">start</property>
+                        <layout>
+                            <property name="column">0</property>
+                            <property name="row">2</property>
+                        </layout>
+                    </object>
+                </child>
+                <child>
+                    <object id="albumartist-label" class="GtkLabel">
+                        <property name="name">songinfo-albumartist-label</property>
+                        <property name="label"></property>
+                        <property name="hexpand">False</property>
+                        <property name="vexpand">False</property>
+                        <property name="halign">start</property>
+                        <property name="valign">start</property>
+                        <layout>
+                            <property name="column">1</property>
+                            <property name="row">2</property>
+                        </layout>
+                    </object>
+                </child>
+                <child>
+                    <object id="composer-title" class="GtkLabel">
+                        <property name="name">songinfo-composer-title</property>
+                        <property name="label">Composer: </property>
+                        <property name="hexpand">True</property>
+                        <property name="vexpand">False</property>
+                        <property name="halign">start</property>
+                        <property name="valign">start</property>
+                        <layout>
+                            <property name="column">0</property>
+                            <property name="row">3</property>
+                        </layout>
+                    </object>
+                </child>
+                <child>
+                    <object id="composer-label" class="GtkLabel">
+                        <property name="name">songinfo-composer-label</property>
+                        <property name="label"></property>
+                        <property name="hexpand">False</property>
+                        <property name="vexpand">False</property>
+                        <property name="halign">start</property>
+                        <property name="valign">start</property>
+                        <layout>
+                            <property name="column">1</property>
+                            <property name="row">3</property>
+                        </layout>
+                    </object>
+                </child>
+                <child>
+                    <object id="time-title" class="GtkLabel">
+                        <property name="name">songinfo-time-title</property>
+                        <property name="label">Time: </property>
+                        <property name="hexpand">True</property>
+                        <property name="vexpand">False</property>
+                        <property name="halign">start</property>
+                        <property name="valign">start</property>
+                        <layout>
+                            <property name="column">0</property>
+                            <property name="row">4</property>
+                        </layout>
+                    </object>
+                </child>
+                <child>
+                    <object id="time-label" class="GtkLabel">
+                        <property name="name">songinfo-time-label</property>
+                        <property name="label"></property>
+                        <property name="hexpand">False</property>
+                        <property name="vexpand">False</property>
+                        <property name="halign">start</property>
+                        <property name="valign">start</property>
+                        <layout>
+                            <property name="column">1</property>
+                            <property name="row">4</property>
+                        </layout>
+                    </object>
+                </child>
+                <child>
+                    <object id="track-title" class="GtkLabel">
+                        <property name="name">songinfo-track-title</property>
+                        <property name="label">Track: </property>
+                        <property name="hexpand">True</property>
+                        <property name="vexpand">False</property>
+                        <property name="halign">start</property>
+                        <property name="valign">start</property>
+                        <layout>
+                            <property name="column">0</property>
+                            <property name="row">5</property>
+                        </layout>
+                    </object>
+                </child>
+                <child>
+                    <object id="track-label" class="GtkLabel">
+                        <property name="name">songinfo-track-label</property>
+                        <property name="label"></property>
+                        <property name="hexpand">False</property>
+                        <property name="vexpand">False</property>
+                        <property name="halign">start</property>
+                        <property name="valign">start</property>
+                        <layout>
+                            <property name="column">1</property>
+                            <property name="row">5</property>
+                        </layout>
+                    </object>
+                </child>
+                <child>
+                    <object id="date-title" class="GtkLabel">
+                        <property name="name">songinfo-date-title</property>
+                        <property name="label">Date: </property>
+                        <property name="hexpand">True</property>
+                        <property name="vexpand">False</property>
+                        <property name="halign">start</property>
+                        <property name="valign">start</property>
+                        <layout>
+                            <property name="column">0</property>
+                            <property name="row">6</property>
+                        </layout>
+                    </object>
+                </child>
+                <child>
+                    <object id="date-label" class="GtkLabel">
+                        <property name="name">songinfo-date-label</property>
+                        <property name="label"></property>
+                        <property name="hexpand">False</property>
+                        <property name="vexpand">False</property>
+                        <property name="halign">start</property>
+                        <property name="valign">start</property>
+                        <layout>
+                            <property name="column">1</property>
+                            <property name="row">6</property>
+                        </layout>
+                    </object>
+                </child>
+                <child>
+                    <object id="genre-title" class="GtkLabel">
+                        <property name="name">songinfo-genre-title</property>
+                        <property name="label">Genre: </property>
+                        <property name="hexpand">True</property>
+                        <property name="vexpand">False</property>
+                        <property name="halign">start</property>
+                        <property name="valign">start</property>
+                        <layout>
+                            <property name="column">0</property>
+                            <property name="row">7</property>
+                        </layout>
+                    </object>
+                </child>
+                <child>
+                    <object id="genre-label" class="GtkLabel">
+                        <property name="name">songinfo-genre-label</property>
+                        <property name="label"></property>
+                        <property name="hexpand">False</property>
+                        <property name="vexpand">False</property>
+                        <property name="halign">start</property>
+                        <property name="valign">start</property>
+                        <layout>
+                            <property name="column">1</property>
+                            <property name="row">7</property>
+                        </layout>
+                    </object>
+                </child>
+                <child>
+                    <object id="disc-title" class="GtkLabel">
+                        <property name="name">songinfo-disc-title</property>
+                        <property name="label">Disc: </property>
+                        <property name="hexpand">True</property>
+                        <property name="vexpand">False</property>
+                        <property name="halign">start</property>
+                        <property name="valign">start</property>
+                        <layout>
+                            <property name="column">0</property>
+                            <property name="row">8</property>
+                        </layout>
+                    </object>
+                </child>
+                <child>
+                    <object id="disc-label" class="GtkLabel">
+                        <property name="name">songinfo-disc-label</property>
+                        <property name="label"></property>
+                        <property name="hexpand">False</property>
+                        <property name="vexpand">False</property>
+                        <property name="halign">start</property>
+                        <property name="valign">start</property>
+                        <layout>
+                            <property name="column">1</property>
+                            <property name="row">8</property>
+                        </layout>
+                    </object>
+                </child>
+                <child>
+                    <object id="format-title" class="GtkLabel">
+                        <property name="name">songinfo-format-title</property>
+                        <property name="label">Format: </property>
+                        <property name="hexpand">True</property>
+                        <property name="vexpand">False</property>
+                        <property name="halign">start</property>
+                        <property name="valign">start</property>
+                        <layout>
+                            <property name="column">0</property>
+                            <property name="row">9</property>
+                        </layout>
+                    </object>
+                </child>
+                <child>
+                    <object id="format-label" class="GtkLabel">
+                        <property name="name">songinfo-format-label</property>
+                        <property name="label"></property>
+                        <property name="hexpand">False</property>
+                        <property name="vexpand">False</property>
+                        <property name="halign">start</property>
+                        <property name="valign">start</property>
+                        <layout>
+                            <property name="column">1</property>
+                            <property name="row">9</property>
+                        </layout>
+                    </object>
+                </child>
+                <child>
+                    <object id="file-title" class="GtkLabel">
+                        <property name="name">songinfo-file-title</property>
+                        <property name="label">File: </property>
+                        <property name="hexpand">True</property>
+                        <property name="vexpand">False</property>
+                        <property name="halign">start</property>
+                        <property name="valign">start</property>
+                        <layout>
+                            <property name="column">0</property>
+                            <property name="row">10</property>
+                        </layout>
+                    </object>
+                </child>
+                <child>
+                    <object id="file-label" class="GtkLabel">
+                        <property name="name">songinfo-file-label</property>
+                        <property name="label"></property>
+                        <property name="hexpand">False</property>
+                        <property name="vexpand">True</property>
+                        <property name="halign">start</property>
+                        <property name="valign">start</property>
+                        <property name="wrap">True</property>
+                        <layout>
+                            <property name="column">1</property>
+                            <property name="row">10</property>
+                        </layout>
+                    </object>
+                </child>
+            </object>
+        </child>
+        <child>
+            <object id="close-button" class="GtkButton">
+                <property name="name">songinfo-close-button</property>
+                <property name="label">Close</property>
+                <property name="hexpand">True</property>
+                <property name="vexpand">True</property>
+                <property name="halign">fill</property>
+                <property name="valign">fill</property>
+            </object>
+        </child>
+    </object>
+</interface>

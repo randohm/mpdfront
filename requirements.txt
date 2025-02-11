@@ -1,0 +1,5 @@
+python-musicpd
+mutagen
+pillow
+pygobject
+pyyaml
